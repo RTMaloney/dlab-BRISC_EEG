@@ -1,16 +1,25 @@
 
-% BRISC_run_attention_experiment
+%BRISC_run_attention_experiment (Participant_ID, sex, run_number)
 % To do;
-% - decide on method of flicker position counterbalancng (blocks or individual babies)?
 % - what subject info needs to be entered/stored (code,number?)
 % - arrange randomisation control for different trial types
 % - serial port calls, including closing it down when exiting/quitting.
 % - do we use desired or corrected trial duration in control of trial stim? (cf Daniel)
+% -
+
+% Flicker freq of checkers will be counterbalanced across babies. (not blocks)
 
 %% Housekeeping
 clc;
 clear all;
 close all;
+
+%if isempty (run_number), run_number = 1; end
+
+run_number = 1;
+Participant_ID = 2;
+
+%if isempty (Participant_ID), Participant_ID = 1; end
 
 %% Set Up Structures Used in Experiment
 Par = struct(); % For experimental parameters
@@ -18,7 +27,9 @@ Res = struct(); % For results
 Port = struct();% Pertaining to the serial port, for sending triggers.
 Switch = struct(); % For experimental control
 
-Switch.DrawMovies = false; % set to true or false to determine movie playback:
+Switch.DrawMovies = true; % set to true or false to determine movie playback:
+
+Res.ParticipantInfo.ID = Participant_ID;
 
 % Query the machine we're running:
 [~, Par.ComputerName] = system('hostname');
@@ -32,32 +43,6 @@ Par.MatlabVersion = version;
 % Unify the keyboard names in case we run this on a mac:
 KbName('UnifyKeyNames')
 RespQuit = KbName('escape'); % Hit 'Esq' to quit/abort program.
-
-%%
-if Switch.DrawMovies
-    % Generate a cell array of strings providing the full paths of each of the 9 movie files.
-    % All of the Wiggles movies listed here have the same resolution: 720 (h) * 1280 (w)
-    Par.Disp.video_dir = 'C:\Users\BRISC\Videos';                    % The movie file directory
-    Par.Disp.MoviePaths = {'The Wiggles - Romp Bomp A Stomp.mp4', ...    % Each of the movie file names
-        'The Wiggles- Do The Pretzel (Official Video).mp4', ...
-        'The Wiggles- Do The Propeller! (Official Video).mp4', ...
-        'The Wiggles- Do the Skeleton Scat (Official Video).mp4', ...
-        'The Wiggles- I''ve Got My Glasses On (Official Video).mp4', ...
-        'The Wiggles- Ooey, Ooey, Ooey Allergies.mp4', ...
-        'The Wiggles- Say the Dance, Do the Dance (Official Video).mp4', ...
-        'The Wiggles- There Are So Many Animals (Official Video).mp4', ...
-        'The Wiggles- Who''s In The Wiggle House- (Official Video).mp4'};
-    % Insert the full directory into each file path
-    Par.Disp.MoviePaths = cellfun(@(x) fullfile(Par.Disp.video_dir, x), Par.Disp.MoviePaths, 'UniformOutput', false);
-    
-    % Extract and set aside details of each of the movies:
-    for v=1:length(Par.Disp.MoviePaths)
-        Par.Disp.MovieDetails{v} = VideoReader(Par.Disp.MoviePaths{v});
-    end
-    
-    Par.Disp.NumMovieFiles = length(Par.Disp.MovieDetails); % Store the number of available movie files.
-    ReduceMovieResBy = 1/3; % How much do we want to reduce the size of the movies by when drawn?
-end
 
 %% Screen Initialisation
 try % Enclose in a try/catch statement, in case something goes awry with the PTB functions
@@ -104,7 +89,7 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
     
     % The first entry specifies how many pixels in each square.
     Par.Disp.NumCheckSquares = 6;                                         % number of squares in row of the checkerboard.
-    Par.Disp.NumPixCheckSq = floor(scrDim(4)/4/Par.Disp.NumCheckSquares); % make it a proportion of the screen height.
+    Par.Disp.NumPixCheckSq = floor(scrDim(4)/4/Par.Disp.NumCheckSquares); % make it a proportion of the screen width.
     Par.Disp.Checkerboard = double(checkerboard(Par.Disp.NumPixCheckSq, ...
         Par.Disp.NumCheckSquares/2) > 0.5);                               % Make the checkerboard of just 1s and 0s (white/black)
     
@@ -175,10 +160,18 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
     % These consist of square waves of zeros and ones that are used to
     % flip the checkerboard by 90 deg in order to cause it to reverse in contrast polarity at the appropriate frequency.
     
-    Par.Disp.CheckFreqHz = [6 10]; % temporal frequencies of the two checkerboards
+    % temporal frequencies of the two checkerboards: determine left/right placing
+    % based on whether the participant ID number is odd or even (method of counterbalancing across individuals).
+    if mod(Participant_ID,2)    % If it's an odd-numbered participant
+        Par.Disp.CheckFreqHz = [6 10]; % 6 Hz on left, 10 Hz on right
+        
+    else                        % otherwise, if it's an even-numbered participant, do the opposite
+        Par.Disp.CheckFreqHz = [10 6]; % 10 Hz on left, 6 Hz on right
+    end
+    
     angFreq = 2* pi * Par.Disp.CheckFreqHz; % Periodic frequencies of our checkerboards
     % Define time points to sample our wave at (in sec):
-    t = Par.Timing.screenRefreshTime : Par.Timing.screenRefreshTime : Par.Timing.TotalTrialDuration.uncorrected;
+    t = 0 : Par.Timing.screenRefreshTime : Par.Timing.TotalTrialDuration.corrected;
     % Generate the square waves for both frequencies;
     % Half-wave rectify them by adding 1 and dividing by 2 (so we have 1s and 0s, not 1s and -1s).
     Par.Disp.ChecksDutyCycles = (square(cos(angFreq.*t')) + 1) / 2;
@@ -266,9 +259,35 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
     
     
     %% Determine parameters of each movie displayed on each trial
+    % Note that these movie files all have a FPS of 25, which is close to 30, half the frame rate of the display.
+    % So we will only want to display a movie image on every 2nd frame, otherwise it will look too fast/jerky.
     
     if Switch.DrawMovies
+        % Generate a cell array of strings providing the full paths of each of the 9 movie files.
+        % All of the Wiggles movies listed here have the same resolution: 720 (h) * 1280 (w)
+        Par.Disp.video_dir = 'C:\Users\BRISC\Videos';                     % The movie file directory
+        Par.Disp.MoviePaths = {'The Wiggles - Romp Bomp A Stomp.mp4', ... % Each of the movie file names
+            'The Wiggles- Do The Pretzel (Official Video).mp4', ...
+            'The Wiggles- Do The Propeller! (Official Video).mp4', ...
+            'The Wiggles- Do the Skeleton Scat (Official Video).mp4', ...
+            'The Wiggles- I''ve Got My Glasses On (Official Video).mp4', ...
+            'The Wiggles- Ooey, Ooey, Ooey Allergies.mp4', ...
+            'The Wiggles- Say the Dance, Do the Dance (Official Video).mp4', ...
+            'The Wiggles- There Are So Many Animals (Official Video).mp4', ...
+            'The Wiggles- Who''s In The Wiggle House- (Official Video).mp4'};
+        % Insert the full directory into each file path
+        Par.Disp.MoviePaths = cellfun(@(x) fullfile(Par.Disp.video_dir, x), Par.Disp.MoviePaths, 'UniformOutput', false);
         
+        % Extract and set aside details of each of the movies:
+        for v=1:length(Par.Disp.MoviePaths)
+            Par.Disp.MovieDetails{v} = VideoReader(Par.Disp.MoviePaths{v});
+        end
+        
+        Par.Disp.NumMovieFiles = length(Par.Disp.MovieDetails); % Store the number of available movie files.
+        Par.Disp.ReduceMovieResBy = 1/3; % How much do we want to reduce the size of the movies by when drawn?
+    end
+    
+    if Switch.DrawMovies
         % We'll select a random movie and a random time period from that movie for display on each trial,
         % provided it does not exceed the end of the movie.
         
@@ -287,21 +306,37 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
             % These will be identical for each selection, unless a new set of movies of different resolution are used.
             % But we will set aside details of each just in case...
             Par.Disp.movieRects(condN,:) = CenterRectOnPointd ([0 0 ...
-                Par.Disp.MovieDetails{RandDraw}.Width * ReduceMovieResBy ...
-                Par.Disp.MovieDetails{RandDraw}.Height * ReduceMovieResBy], ...
+                Par.Disp.MovieDetails{RandDraw}.Width * Par.Disp.ReduceMovieResBy ...
+                Par.Disp.MovieDetails{RandDraw}.Height * Par.Disp.ReduceMovieResBy], ...
                 centreX, centreY);
+        end
+    end
+    
+    % Here we also want to load a set of movie textures into memory, ready for display.
+    % These textures will be overwritten between trials.
+    % We already have our movie objects saved from above.
+    % We will simply use the randomly selected movie for the first trial here.
+    if Switch.DrawMovies
+        % Open a new movie object, at the random start time defined above:
+        movieObj = VideoReader(Par.Disp.MoviesUsed.movieFileName{1},'CurrentTime',Par.Disp.RandomMovieStartTime(1));
+        % we only display an image every 2nd video refresh (hence/2)
+        % This also means we don't have to hold as many images in memory.
+        for k = 1 : round(Par.Timing.TotalTrialFrames / 2)
+            this_frame = readFrame(movieObj);
+            MovieTex(k) = Screen('MakeTexture',Par.scrID,this_frame);
         end
     end
     
     %% Begin the experiment!
     ForcedQuit = false; % this is a flag for the exit function to indicate whether the program was aborted
-    HideCursor;
+    %HideCursor;
     
     % Display welcome screen
     Screen('TextFont',Par.scrID, 'Arial');
     Screen('TextSize',Par.scrID, 44);
     DrawFormattedText(Par.scrID,['Welcome ', ...
-        '\n \nPress any key to begin.'], ...
+        '\n \nPress any key to begin.', ...
+        '\n \nOr press ''Esc'' to exit at any time.'], ...
         'center', 'center', 0);
     Screen('Flip', Par.scrID); %, [], [], [], 1);
     
@@ -321,6 +356,7 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
         end
     end
     
+    %% Set up variables to control stimulus presentation:
     WaitSecs(0.2)
     KbCheck(); % take a quick KbCheck to load it now & flush any stored events
     
@@ -335,31 +371,28 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
     vbl = Screen('Flip', Par.scrID);
     Res.Timing.runStartTime = vbl;
     
-    %%
-    % Test presentation
+    % Display stimuli!
     while trialN <= Par.Disp.NumTrialTypes % Begin loop across trial types
         
+        % Display trial number of screen:
         DrawFormattedText(Par.scrID,[num2str(trialN)], ...
             'center', 'center', 0);
         [vbl , ~ , ~, ~] = Screen('Flip', Par.scrID);
         
         if Switch.DrawMovies
-            % Open movie file for current trial:
-            [moviePtr, ~, ~, ~, ~] = Screen('OpenMovie', Par.scrID, Par.Disp.MoviesUsed.movieFileName{trialN}, ...
-                [], ... % preloadsecs
-                [], ... % asyc (?)
-                2, ...  % specialFlags: set to 2 get rid of sound (may be faster) RM.
-                5, ...  % pixelFormat, 5 or 6 meant to be better... RM ...6 results in b/w movies
-                []);    % maxThreads;
-        end
-                
-        if Switch.DrawMovies
-            % Start movie playback engine:
-            Screen('PlayMovie', moviePtr, 1); % Final argument is play rate.
+            % Open a new movie object for this trial, at the random start time defined above:
+            movieObj = VideoReader(Par.Disp.MoviesUsed.movieFileName{trialN}, ...
+                'CurrentTime',Par.Disp.RandomMovieStartTime(trialN));
+            % we only display an image every 2nd video refresh (hence/2)
+            % This also means we don't have to hold as many images in memory.
+            for k = 1 : round(Par.Timing.TotalTrialFrames / 2)
+                this_frame = readFrame(movieObj);
+                MovieTex(k) = Screen('MakeTexture',Par.scrID,this_frame);
+            end
         end
         
         % Insert inter-trial interval
-        while GetSecs() < vbl + Par.Disp.InterTrialInterval, end 
+        while GetSecs() < vbl + Par.Disp.InterTrialInterval, end
         
         % Refresh screen ready for new trial:
         [vbl , ~ , ~, ~] = Screen('Flip', Par.scrID, vbl+(Par.Timing.screenRefreshTime*0.5)); %, [], [], 1); % update display on next refresh (& provide deadline)
@@ -367,45 +400,31 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
         %Determine what the correct length of the stimulus or blank should be, if this is the first frame:
         if F == 1
             trialStartVBL = vbl; %take start point as most recent vbl
-            trialEndVBL = trialStartVBL + Par.Timing.TotalTrialDuration.corrected -  Par.Timing.screenRefreshTime;
+            trialEndVBL = trialStartVBL + Par.Timing.TotalTrialDuration.uncorrected -  Par.Timing.screenRefreshTime;
             
             % Send trigger to mark first frame of stimulus:
             
         end
         
-        
         % Draw each stimulus event:
         trialEnd = false;
         while ~trialEnd %This should keep iterating across stim frames until vbl >= trialEndVBL
-            
-            if Switch.DrawMovies
-                % If it's the first frame, set the movie to its random start point:
-                if F == 1
-                    Screen('SetMovieTimeIndex', moviePtr, Par.Disp.RandomMovieStartTime(trialN));
-                end
-            end
             
             % Draw the cue + reward stimuli:
             Screen('FillRect', Par.scrID, Par.Timing.LeftCueStimulusRGB{trialN}(F,:), centeredCueRect(1,:));
             Screen('FillRect', Par.scrID, Par.Timing.RightCueStimulusRGB{trialN}(F,:), centeredCueRect(2,:));
             
+            %Draw the checkerboard stimuli:
             Screen('DrawTextures', Par.scrID, CheckTex, [], centeredCheckRect', Par.Disp.ChecksDutyCycles(F,:)*90);
             
             if Switch.DrawMovies
-                % Wait for next movie frame, retrieve texture handle to it
-                MovieTex = Screen('GetMovieImage', Par.scrID, moviePtr);
-                % Draw the new movie texture immediately to screen:
-                Screen('DrawTexture', Par.scrID, MovieTex, [], Par.Disp.movieRects(trialN,:)); %
+                % Draw a movie image texture every 2nd video frame (ie ceil(frame no/2))
+                Screen('DrawTexture', Par.scrID, MovieTex(ceil(F/2)), [],  Par.Disp.movieRects(trialN,:));
             end
             
             Screen('DrawingFinished', Par.scrID);
             
             [vbl , ~ , ~, missed] = Screen('Flip', Par.scrID, vbl+(Par.Timing.screenRefreshTime*0.5)); %, [], [], 1); % update display on next refresh (& provide deadline)
-            
-            if Switch.DrawMovies
-                % Release movie texture:
-                Screen('Close', MovieTex);
-            end
             
             if missed > 0
                 Res.Timing.missedFrames = Res.Timing.missedFrames + 1;
@@ -436,26 +455,25 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
         end % end of loop across trial frames
         
         if Switch.DrawMovies
-            % Stop movie playback:
-            Screen('PlayMovie', moviePtr, 0);
-            % Close movie object:
-            Screen('CloseMovie', moviePtr);
+            % Clear some of the variables associated with the movie images
+            clear('movieObj')
+            clear('this_frame')
+            clear('MovieTex')
         end
-        F =1;
-        %trialN = trialN+1; % Increment condition/ trial type
         
         Screen('Flip', Par.scrID); % Blank screen between trials
         
     end % end of loop across trial types
     
+    Screen('CloseAll')
+    % Print out number of missed frames to command window:
     missed_deadlines = Res.Timing.missedFrames
-    sca
     
-catch
+catch MException
     
     % We throw the error again so the user sees the error description.
     psychrethrow(psychlasterror);
-    sca
+    Screen('CloseAll')
     
 end % End of try/catch statement.
 ShowCursor

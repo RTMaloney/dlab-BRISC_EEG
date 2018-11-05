@@ -43,7 +43,8 @@ Screen('BlendFunction', Par.scrID, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 %%
 obj = VideoReader(fullfile('C:\Users\BRISC\Videos','The Wiggles- Say the Dance, Do the Dance (Official Video).mp4'))
 
-NumFramesToDraw = 5*60;
+NumFramesToDraw = 4.5*60;
+tic
 for k = 1 : NumFramesToDraw
     this_frame = readFrame(obj);
     
@@ -55,6 +56,7 @@ for k = 1 : NumFramesToDraw
     %   title(thisax, sprintf('Frame #%d', k));
     %   pause(0.1)
 end
+toc
 
 % generate 'rect'  for the movie, making it half the size on screen:
 movieRect = CenterRectOnPointd ([0 0 ...
