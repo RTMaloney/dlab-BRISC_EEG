@@ -1,11 +1,12 @@
 
-%BRISC_run_attention_experiment (Participant_ID, sex, run_number)
+function BRISC_run_attention_experiment (Participant_ID, sex, run_number)
 % To do;
-% - what subject info needs to be entered/stored (code,number?)
-% - arrange randomisation control for different trial types
+% - what subject info needs to be entered/stored (code,number?),
+% - *** arrange randomisation control for different trial types ***
 % - serial port calls, including closing it down when exiting/quitting.
 % - do we use desired or corrected trial duration in control of trial stim? (cf Daniel)
-% -
+% - make version 3 (simple experiment) in separate code
+% - insert auditory tone!
 
 % Flicker freq of checkers will be counterbalanced across babies. (not blocks)
 
@@ -14,12 +15,12 @@ clc;
 clear all;
 close all;
 
-%if isempty (run_number), run_number = 1; end
+% Assign default variables, if not entered:
+if nargin < 3 || isempty (run_number), run_number = 1; end
 
-run_number = 1;
-Participant_ID = 1;
+if nargin < 2 || isempty (sex), sex = 'm'; end
 
-%if isempty (Participant_ID), Participant_ID = 1; end
+if nargin < 1 || isempty (Participant_ID), Participant_ID = 1; end
 
 %% Set Up Structures Used in Experiment
 Par = struct(); % For experimental parameters
@@ -27,7 +28,17 @@ Res = struct(); % For results
 Port = struct();% Pertaining to the serial port, for sending triggers.
 Switch = struct(); % For experimental control
 
-Switch.DrawMovies = true; % set to true or false to determine movie playback:
+%% Define switches to control aspects of experiment (ie movies on/off, trigger port)
+
+% Define the experiment version.
+% Version 1 = full version, all condition types, OR
+% Version 2 = omits double cue and no cue, no tone conditions (fewer trials)
+%(Version 3 has its own separate function).
+Switch.ExperimentVersion = 1;
+
+Switch.DrawMovies = true; % set to true or false to determine movie playback.
+
+Port.isOn = true;         % set to true if sending triggers over serial port
 
 Res.ParticipantInfo.ID = Participant_ID;
 
@@ -39,9 +50,9 @@ Par.ComputerType = computer;
 % Store the version of Matlab we're running:
 Par.MatlabVersion = version;
 
-% Define escape key:
 % Unify the keyboard names in case we run this on a mac:
 KbName('UnifyKeyNames')
+% Define escape key:
 RespQuit = KbName('escape'); % Hit 'Esq' to quit/abort program.
 
 %% Screen Initialisation
@@ -88,25 +99,38 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
     % Set up the 6 * 6 checkerboards stimulus.
     
     % The first entry specifies how many pixels in each square.
-    Par.Disp.NumCheckSquares = 6;                                         % number of squares in row of the checkerboard.
-    Par.Disp.NumPixCheckSq = floor(scrDim(4)/4/Par.Disp.NumCheckSquares); % make it a proportion of the screen height.
+    Par.Disp.NumCheckSquares = 6;
+    
+    % number of squares in row of the checkerboard.
+    Par.Disp.NumPixCheckSq = floor(winWidth/4./Par.Disp.NumCheckSquares);   % make it a proportion of the screen width.
     Par.Disp.Checkerboard = double(checkerboard(Par.Disp.NumPixCheckSq, ...
-        Par.Disp.NumCheckSquares/2) > 0.5);                               % Make the checkerboard of just 1s and 0s (white/black)
+        Par.Disp.NumCheckSquares/2) > 0.5);                                % make the checkerboard of just 1s and 0s (white/black)
+    Par.Disp.CheckerboardSizePix = size(Par.Disp.Checkerboard);            % Set aside x,y size of checkerboard in pixels
     
     % Make checkerboard texture.
-    % NOTE: we only need 1 texture; for flickering we use the rotation option in 'Drawtexture'
+    % NOTE: we only need 1 texture for left and right; for flickering we use the rotation option in 'Drawtexture'
     CheckTex = Screen('MakeTexture',Par.scrID,Par.Disp.Checkerboard,[],[],2);
     
     % Define left and right coordinates of the checkerboards:
-    centeredCheckRect(1,:) = CenterRectOnPointd(Screen('Rect', CheckTex), scrDim(3)/4, centreY); % Left side
-    centeredCheckRect(2,:) = CenterRectOnPointd(Screen('Rect', CheckTex), scrDim(3)/2 + scrDim(3)/4, centreY); % Right side
+    centeredCheckRect(1,:) = CenterRectOnPointd(Screen('Rect', CheckTex), ...
+        (Par.Disp.CheckerboardSizePix(1) +  Par.Disp.NumPixCheckSq)/2, ...    % Left side x coord: near edge of screen, but with room for cue stimulus
+        centreY);                                                             % Left side y coord (centred)
+    
+    centeredCheckRect(2,:) = CenterRectOnPointd(Screen('Rect', CheckTex), ...
+        winWidth - (Par.Disp.CheckerboardSizePix(1)+Par.Disp.NumPixCheckSq)/2, ... % Right side x coord: near screen edge, but with room for cue stimulus
+        centreY);                                                                  % Right side y coord (centred)
     
     % Determine the size of the cue/reward stimulus.
-    % We'll make this a border around the checks of width TWO checkerboard squares.
-    Par.Disp.CueRect = [0 0 size(Par.Disp.Checkerboard)+Par.Disp.NumPixCheckSq*2];
+    % We'll make this a border around the checks of width one checkerboard square.
+    Par.Disp.CueRect = [0 0 Par.Disp.CheckerboardSizePix+Par.Disp.NumPixCheckSq];
+    
     % Define the coordinates of the cue:
-    centeredCueRect(1,:) = CenterRectOnPointd(Par.Disp.CueRect, scrDim(3)/4, centreY); % Left side
-    centeredCueRect(2,:) = CenterRectOnPointd(Par.Disp.CueRect, scrDim(3)/2 + scrDim(3)/4, centreY); % Right side
+    centeredCueRect(1,:) = CenterRectOnPointd(Par.Disp.CueRect, ...
+        (Par.Disp.CheckerboardSizePix(1) +  Par.Disp.NumPixCheckSq)/2, ... % Left side x coord: abutting edge of screen.
+        centreY);                                                          % Left side y coord (centred)
+    centeredCueRect(2,:) = CenterRectOnPointd(Par.Disp.CueRect, ...
+        winWidth - (Par.Disp.CheckerboardSizePix(1)+Par.Disp.NumPixCheckSq)/2, ... % Right side x coord: abutting edge of screen.
+        centreY);                                                                  % Right side y coord (centred)
     
     % Colour of the cue:
     Par.Disp.CueRGB = [1 0 0];
@@ -177,7 +201,7 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
     Par.Disp.ChecksDutyCycles = (square(cos(angFreq.*t')) + 1) / 2;
     
     %% Set up timing duty cycles for the cue / reward stimulus.
-    % Cue will be bright red border around the checkerboard.
+    % Cue will be bright red border around the checkerboard (RGB= 1 0 0).
     %   There are 5 cue trial types:
     %   Valid | invalid | double cue | no cue + tone | no cue, no tone
     %   .. * 2 each with the reward stimulus presented on either left or right. So 10 trials.
@@ -197,6 +221,12 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
         1       1       1       0; ... % Double cue, left reward
         0       1       0       0; ... % No cues, left reward
         ];
+    
+    % Now, here we can remove trial types from the condition matrix if we want to use a simpler experiment.
+    if Switch.ExperimentVersion == 2
+        Par.Disp.ConditionMatrix = Par.Disp.ConditionMatrix(1:end-2,:); % Cut the 2 lowest conditions
+    end
+    
     % To set up the trials with reward on the RIGHT hand side, we can simply
     % swap columns 1&2 for 3&4 from above. Do so using circshift:
     Par.Disp.ConditionMatrix = [Par.Disp.ConditionMatrix; ...
@@ -257,6 +287,13 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
         end
     end    % End of loop across conditions
     
+    %% Determine randomisation order of trials
+    % Pick a random order to display the trials in. IMPORTANT! This sequence tells us in what order 1...n, the n trial types were presented in.
+    % NOTE: we will not re-shuffle the movies, because they are already randomly selected, so whatever trials 1...n are presented are associated
+    % with movies 1....n defined below. 
+    % (it probably doesn't really matter what movie is displayed anyway; we are mostly interested in the experimental trial types).
+    % Note that this randomisation only determines the order of the CUING/REWARD conditions, because the checkerboards occur in each trial type.
+    Par.Timing.RandomTrialOrder = randperm(Par.Disp.NumTrialTypes)
     
     %% Determine parameters of each movie displayed on each trial
     % Note that these movie files all have a FPS of 25, which is close to 30, half the frame rate of the display.
@@ -284,7 +321,7 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
         end
         
         Par.Disp.NumMovieFiles = length(Par.Disp.MovieDetails); % Store the number of available movie files.
-        Par.Disp.ReduceMovieResBy = 1/3; % How much do we want to reduce the size of the movies by when drawn?
+        Par.Disp.ReduceMovieResBy = 1/2; % Multiplier: the proportion of original movie size that we want drawn.
     end
     
     if Switch.DrawMovies
@@ -316,15 +353,18 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
     % These textures will be overwritten between trials.
     % We already have our movie objects saved from above.
     % We will simply use the randomly selected movie for the first trial here.
-    
-    % Open a new movie object, at the random start time defined above:
-    movieObj = VideoReader(Par.Disp.MoviesUsed.movieFileName{1},'CurrentTime',Par.Disp.RandomMovieStartTime(1));
-    % we only display an image every 2nd video refresh (hence/2)
-    % This also means we don't have to hold as many images in memory.
-    for k = 1 : round(Par.Timing.TotalTrialFrames / 2)
-        this_frame = readFrame(movieObj);
-        MovieTex(k) = Screen('MakeTexture',Par.scrID,this_frame);
+    if Switch.DrawMovies
+        % Open a new movie object, at the random start time defined above:
+        movieObj = VideoReader(Par.Disp.MoviesUsed.movieFileName{1},'CurrentTime',Par.Disp.RandomMovieStartTime(1));
+        % we only display an image every 2nd video refresh (hence/2)
+        % This also means we don't have to hold as many images in memory.
+        for k = 1 : round(Par.Timing.TotalTrialFrames / 2)
+            this_frame = readFrame(movieObj);
+            MovieTex(k) = Screen('MakeTexture',Par.scrID,this_frame);
+        end
     end
+    
+    %% Save parameters file
     
     %% Begin the experiment!
     ForcedQuit = false; % this is a flag for the exit function to indicate whether the program was aborted
@@ -374,7 +414,8 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
     while trialN <= Par.Disp.NumTrialTypes % Begin loop across trial types
         
         % Display trial number of screen:
-        DrawFormattedText(Par.scrID,[num2str(trialN)], ...
+        %DrawFormattedText(Par.scrID, [num2str(trialN) ',' num2str(Par.Timing.RandomTrialOrder(trialN))] :to display trialNo+ conc
+        DrawFormattedText(Par.scrID, [num2str(trialN) ',' num2str(Par.Timing.RandomTrialOrder(trialN))], ...
             'center', 'center', 0);
         [vbl , ~ , ~, ~] = Screen('Flip', Par.scrID);
         
@@ -410,11 +451,19 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
         while ~trialEnd %This should keep iterating across stim frames until vbl >= trialEndVBL
             
             % Draw the cue + reward stimuli:
-            Screen('FillRect', Par.scrID, Par.Timing.LeftCueStimulusRGB{trialN}(F,:), centeredCueRect(1,:));
-            Screen('FillRect', Par.scrID, Par.Timing.RightCueStimulusRGB{trialN}(F,:), centeredCueRect(2,:));
+            Screen('FillRect', Par.scrID, ... % Left hand cue/reward
+                Par.Timing.LeftCueStimulusRGB{Par.Timing.RandomTrialOrder(trialN)}(F,:), ...
+                centeredCueRect(1,:));
+            Screen('FillRect', Par.scrID, ... % Right hand cue/reward
+                Par.Timing.RightCueStimulusRGB{Par.Timing.RandomTrialOrder(trialN)}(F,:), ...
+                centeredCueRect(2,:));
             
             %Draw the checkerboard stimuli:
-            Screen('DrawTextures', Par.scrID, CheckTex, [], centeredCheckRect', Par.Disp.ChecksDutyCycles(F,:)*90);
+            Screen('DrawTextures', Par.scrID, ...
+                CheckTex, ...                       % Index the checkerboard texture
+                [], ...                             % texture subpart (we use whole texture)
+                centeredCheckRect', ...             % locations of the L/R checkerboards
+                Par.Disp.ChecksDutyCycles(F,:)*90); % rotation angle: determines the flickering
             
             if Switch.DrawMovies
                 % Draw a movie image texture every 2nd video frame (ie ceil(frame no/2))
@@ -475,7 +524,8 @@ catch MException
     Screen('CloseAll')
     
 end % End of try/catch statement.
-ShowCursor
+ShowCursor();
+end % End of main function
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function ExitGracefully (ForcedQuit)
