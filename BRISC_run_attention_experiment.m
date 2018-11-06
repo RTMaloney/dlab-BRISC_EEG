@@ -1,13 +1,13 @@
 
-function BRISC_run_attention_experiment (Participant_ID, sex, run_number)
+function BRISC_run_attention_experiment (Participant_ID, sex, block_number)
 % To do;
 % - what subject info needs to be entered/stored (code,number?),
-% - *** arrange randomisation control for different trial types ***
+% - *** arrange randomisation control for different trial types *** DONE
 % - serial port calls, including closing it down when exiting/quitting.
 % - do we use desired or corrected trial duration in control of trial stim? (cf Daniel)
 % - make version 3 (simple experiment) in separate code
-% - insert auditory tone!
-
+% - insert auditory tone! DONE
+% - set up unique file name for saving data
 % Flicker freq of checkers will be counterbalanced across babies. (not blocks)
 
 %% Housekeeping
@@ -16,7 +16,7 @@ clear all;
 close all;
 
 % Assign default variables, if not entered:
-if nargin < 3 || isempty (run_number), run_number = 1; end
+if nargin < 3 || isempty (block_number), block_number = 1; end
 
 if nargin < 2 || isempty (sex), sex = 'm'; end
 
@@ -28,9 +28,10 @@ Res = struct(); % For results
 Port = struct();% Pertaining to the serial port, for sending triggers.
 Switch = struct(); % For experimental control
 
-%% Define switches to control aspects of experiment (ie movies on/off, trigger port)
+%% Define switches to control aspects of experiment
+% (ie movies on/off, trigger port), also set aside important info about this block/participant
 
-% Define the experiment version.
+% Define the EXPERIMENT VERSION.
 % Version 1 = full version, all condition types, OR
 % Version 2 = omits double cue and no cue, no tone conditions (fewer trials)
 %(Version 3 has its own separate function).
@@ -38,9 +39,15 @@ Switch.ExperimentVersion = 1;
 
 Switch.DrawMovies = true; % set to true or false to determine movie playback.
 
-Port.isOn = true;         % set to true if sending triggers over serial port
+% SERIAL PORT
+Port.InUse = true;         % set to true if sending triggers over serial port
+Port.COMport = 'COM4';     % the COM port for the trigger box: should not change on this PC
+Port.EventTriggerDuration = 0.004; % Duration, in sec, of trigger; delay before the port is flushed and set back to zero
 
+% Set aside unique details of this participant/block
 Res.ParticipantInfo.ID = Participant_ID;
+Res.ParticipantInfo.GenderSex = sex;
+Res.BlockNumber = block_number;
 
 % Query the machine we're running:
 [~, Par.ComputerName] = system('hostname');
@@ -58,7 +65,6 @@ RespQuit = KbName('escape'); % Hit 'Esq' to quit/abort program.
 %% Screen Initialisation
 try % Enclose in a try/catch statement, in case something goes awry with the PTB functions
     
-    %%
     %Shut down any lingering screens, in case they are open:
     Screen('CloseAll');
     
@@ -77,11 +83,13 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
     Screen('Preference', 'SkipSyncTests', 1) % Uncomment this to override sync tests
     [Par.scrID, scrDim] = PsychImaging('OpenWindow', Par.Disp.screenid, Par.Disp.backgroundColour_RGB);
     
-    Par.Disp.ScreenDimensions = scrDim; % Store screen dimensions (pixels)
     winWidth = scrDim(3);
     winHeight = scrDim(4);
     centreX = scrDim(3)/2;
     centreY = scrDim(4)/2;
+    % Store screen dimensions (pixels)
+    Par.Disp.ScreenDimensions.ScreenHeightPix = winHeight;
+    Par.Disp.ScreenDimensions.ScreenWidthPix = winWidth;
     
     %raise priority level
     priorityLevel=MaxPriority(Par.scrID); Priority(priorityLevel);
@@ -94,6 +102,13 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
     % Set the alpha-blending:
     Screen('BlendFunction', Par.scrID, GL_SRC_ALPHA, GL_ONE);
     Screen('BlendFunction', Par.scrID, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    
+    % Display wait screen
+    Screen('TextFont',Par.scrID, 'Arial');
+    Screen('TextSize',Par.scrID, 44);
+    DrawFormattedText(Par.scrID,['Please wait...'], ...
+        'center', 'center', 0);
+    Screen('Flip', Par.scrID);
     
     %% Define stimuli
     % Set up the 6 * 6 checkerboards stimulus.
@@ -181,10 +196,11 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
     Par.Timing.TotalTrialDuration.corrected = Par.Timing.TotalTrialFrames / Par.Timing.screenFrameRate;
     
     %% Set up timing duty cycles for the checkerboards.
+    
     % These consist of square waves of zeros and ones that are used to
     % flip the checkerboard by 90 deg in order to cause it to reverse in contrast polarity at the appropriate frequency.
     
-    % temporal frequencies of the two checkerboards: determine left/right placing
+    % Temporal frequencies of the two checkerboards: determine left/right placing
     % based on whether the participant ID number is odd or even (method of counterbalancing across individuals).
     if mod(Participant_ID,2)    % If it's an odd-numbered participant
         Par.Disp.CheckFreqHz = [6 10]; % 6 Hz on left, 10 Hz on right
@@ -193,7 +209,7 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
         Par.Disp.CheckFreqHz = [10 6]; % 10 Hz on left, 6 Hz on right
     end
     
-    angFreq = 2* pi * Par.Disp.CheckFreqHz; % Periodic frequencies of our checkerboards
+    angFreq = 2 * pi * Par.Disp.CheckFreqHz; % Periodic frequencies of our checkerboards
     % Define time points to sample our wave at (in sec):
     t = 0 : Par.Timing.screenRefreshTime : Par.Timing.TotalTrialDuration.corrected;
     % Generate the square waves for both frequencies;
@@ -202,6 +218,7 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
     
     %% Set up timing duty cycles for the cue / reward stimulus.
     % Cue will be bright red border around the checkerboard (RGB= 1 0 0).
+    % Here, we will also insert a flag to control the onset of the auditory tone, if any.
     %   There are 5 cue trial types:
     %   Valid | invalid | double cue | no cue + tone | no cue, no tone
     %   .. * 2 each with the reward stimulus presented on either left or right. So 10 trials.
@@ -212,6 +229,7 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
     
     % Set up a matrix encoding each of the visible conditions, where 1=present, 0=not present
     % Assign trials with reward appearing on the LEFT hand side
+    % Note that the auditory tone occurs with all conditions except the last one
     %   Left side     |  Right side
     %   Cue | Reward  | Cue | Reward
     Par.Disp.ConditionMatrix = [
@@ -222,10 +240,18 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
         0       1       0       0; ... % No cues, left reward
         ];
     
+    % 1 = auditory cue ON, 0 = auditory cue OFF
+    Par.Disp.AuditoryCueOn = [1 1 1 1 0]; % For left cues; all are ON except trial type 5
+    
     % Now, here we can remove trial types from the condition matrix if we want to use a simpler experiment.
     if Switch.ExperimentVersion == 2
         Par.Disp.ConditionMatrix = Par.Disp.ConditionMatrix(1:end-2,:); % Cut the 2 lowest conditions
+        Par.Disp.AuditoryCueOn = Par.Disp.AuditoryCueOn(1:end-2);
     end
+    
+    % 1 = auditory cue ON, 0 = auditory cue OFF
+    % Now repeat for the right side cues:
+    Par.Disp.AuditoryCueOn = [Par.Disp.AuditoryCueOn, Par.Disp.AuditoryCueOn];
     
     % To set up the trials with reward on the RIGHT hand side, we can simply
     % swap columns 1&2 for 3&4 from above. Do so using circshift:
@@ -295,6 +321,22 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
     % Note that this randomisation only determines the order of the CUING/REWARD conditions, because the checkerboards occur in each trial type.
     Par.Timing.RandomTrialOrder = randperm(Par.Disp.NumTrialTypes);
     
+    %% Open the serial device for triggers (if using)
+    if Port.InUse
+        Port.sObj = serial(Port.COMport);
+        fopen(Port.sObj);
+        
+        % Send a dummy pulse to initialise the device:
+        send_event_trigger(Port.sObj, Port.EventTriggerDuration, 255)
+    else
+        Port.sObj = []; % Just use an empty object if we're not using the port
+    end
+    
+    %% Define the event code triggers
+    if Port.InUse
+        Port.EventCodes = define_trigger_event_codes(Par.Disp.NumTrialTypes);
+    end
+
     %% Determine parameters of each movie displayed on each trial
     % Note that these movie files all have a FPS of 25, which is close to 30, half the frame rate of the display.
     % So we will only want to display a movie image on every 2nd frame, otherwise it will look too fast/jerky.
@@ -364,7 +406,25 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
         end
     end
     
-    %% Save parameters file
+    %% Set up the auditory tone for the cue:
+    % We'll use matlab's sound player function for an auditory cue of 50 ms
+    Par.Disp.AudioCueDuration = Par.Timing.CueDuration.uncorrected/2; % Audio duration as proportion of visual cue duration
+    Par.Disp.AudioSampleRateHz = 48000;                               % This is the default for this machine
+    Par.Disp.AudioBitDepth = 24;                                      % Bits per sample: defauly bit depth for this machine
+    Par.Disp.AudioToneFreqHz = 2000;                                  % Frequency of the sine wave we want to play
+    % Make the sine wave:
+    Par.Disp.AudioCueWave = sin(2*pi*Par.Disp.AudioToneFreqHz* ...
+        (1/Par.Disp.AudioSampleRateHz: 1/Par.Disp.AudioSampleRateHz : Par.Disp.AudioCueDuration));
+    
+    % Make the volume ramp for the sound, 100 ms over start/finish, so there are no harsh auditory onsets:
+    Par.Disp.AudioCueVolRamp = [linspace(0,1, Par.Disp.AudioSampleRateHz*0.01), ...
+        ones(1,Par.Disp.AudioSampleRateHz*0.03), linspace(1,0, Par.Disp.AudioSampleRateHz*0.01)];
+    % Play the sound once, just to load the function before the experiment begins
+    % (and alert the attention of the experimenter that the code is ready).
+    sound( Par.Disp.AudioCueVolRamp.*Par.Disp.AudioCueWave, Par.Disp.AudioSampleRateHz, Par.Disp.AudioBitDepth);
+    
+    %% Save all parameters so far:
+    %save_data(Par, Res, Switch, Port)
     
     %% Begin the experiment!
     ForcedQuit = false; % this is a flag for the exit function to indicate whether the program was aborted
@@ -382,20 +442,19 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
     % Wait for user response to continue...
     ButtonPressed = 0;
     while ~ButtonPressed
-        % if 'Esq' is pressed, abort
+        % if 'Esc' is pressed, abort
         [KeyIsDown, ~, keyCode] = KbCheck();
         if KeyIsDown % a key has been pressed
             if keyCode(RespQuit)
                 ForcedQuit = true
-                ExitGracefully(ForcedQuit)
-                %if any other button on the keyboard has been pressed
-            else
+                ExitGracefully(ForcedQuit, Port.sObj)
+            else %if any other button on the keyboard has been pressed, begin
                 ButtonPressed = 1;
             end
         end
     end
     
-    %% Set up variables to control stimulus presentation:
+    %% Initialise variables to control stimulus presentation:
     WaitSecs(0.2)
     KbCheck(); % take a quick KbCheck to load it now & flush any stored events
     
@@ -408,9 +467,10 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
     
     % Update screen and begin
     vbl = Screen('Flip', Par.scrID);
-    Res.Timing.runStartTime = vbl;
+    % Store overall block start time
+    Res.Timing.blockStartTime = vbl;
     
-    % Display stimuli!
+    %% Display stimuli!
     while trialN <= Par.Disp.NumTrialTypes % Begin loop across trial types
         
         % Display trial number of screen:
@@ -431,8 +491,31 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
             end
         end
         
+        % Set up the audio cue for this trial, if there is one.
+        % If there is no auditory tone, the sound is set to zero.
+        this_trial_sound = Par.Disp.AuditoryCueOn(Par.Timing.RandomTrialOrder(trialN)).* ...
+            Par.Disp.AudioCueVolRamp.*Par.Disp.AudioCueWave;
+        
         % Insert inter-trial interval
-        while GetSecs() < vbl + Par.Disp.InterTrialInterval, end
+        SendBlockTrigger = 0;
+        SendTrialTrigger = 0;
+        while GetSecs() < vbl + Par.Disp.InterTrialInterval
+            
+            % Send triggers prior to each trial, indicating block & trial nos.
+            if Port.InUse
+                % Send BLOCK no. trigger 100 ms before trial onset
+                if GetSecs() > vbl + (Par.Disp.InterTrialInterval-0.1) && ~SendBlockTrigger
+                    send_event_trigger(Port.sObj, Port.EventTriggerDuration, Res.BlockNumber)
+                    SendBlockTrigger = 1; % This switch prevents >1 triggers being sent
+                end
+                % Send TRIAL no. trigger 50 ms before trial onset
+                if GetSecs() > vbl + (Par.Disp.InterTrialInterval-0.05) && ~SendTrialTrigger
+                    send_event_trigger(Port.sObj, Port.EventTriggerDuration, Port.EventCodes(trialN,1));
+                    SendTrialTrigger = 1; % This switch prevents >1 triggers being sent
+                end
+            end
+            
+        end % end of inter-trial interval while loop
         
         % Refresh screen ready for new trial:
         [vbl , ~ , ~, ~] = Screen('Flip', Par.scrID, vbl+(Par.Timing.screenRefreshTime*0.5)); %, [], [], 1); % update display on next refresh (& provide deadline)
@@ -441,9 +524,6 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
         if F == 1
             trialStartVBL = vbl; %take start point as most recent vbl
             trialEndVBL = trialStartVBL + Par.Timing.TotalTrialDuration.uncorrected -  Par.Timing.screenRefreshTime;
-            
-            % Send trigger to mark first frame of stimulus:
-            
         end
         
         % Draw each stimulus event:
@@ -474,6 +554,27 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
             
             [vbl , ~ , ~, missed] = Screen('Flip', Par.scrID, vbl+(Par.Timing.screenRefreshTime*0.5)); %, [], [], 1); % update display on next refresh (& provide deadline)
             
+            % Send event triggers here ...
+            % trial onset, cue, reward
+            if Port.InUse
+                
+                if F == 1 % send trial onset
+                    send_event_trigger(Port.sObj, Port.EventTriggerDuration, ...
+                        Port.EventCodes(Par.Timing.RandomTrialOrder(trialN),2)); % Col 2 of event code matrix
+                
+                elseif F == Par.Timing.FixnChecksDurationPt1.nFrames+1 % Send cue onset
+                               send_event_trigger(Port.sObj, Port.EventTriggerDuration, ...
+                        Port.EventCodes(Par.Timing.RandomTrialOrder(trialN),3)); % Col 3 of event code matrix
+                    
+                    % Send reward/target onset: it occurs at the sum of the 3 prior periods
+                elseif F == Par.Timing.FixnChecksDurationPt1.nFrames + ... % Fixation period
+                        Par.Timing.CueDuration.nFrames + ...               % Cue period
+                        Par.Timing.FixnChecksDurationPt2.nFrames + 1       % Delay after cue, before reward
+                    send_event_trigger(Port.sObj, Port.EventTriggerDuration, ...
+                        Port.EventCodes(Par.Timing.RandomTrialOrder(trialN),4)); % Col 4 of event code matrix
+                end
+            end
+            
             if missed > 0
                 Res.Timing.missedFrames = Res.Timing.missedFrames + 1;
             end
@@ -490,15 +591,20 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
             % Increment frames.
             F = F + 1; % Only F is reset with each trial
             
+            % Play audio tone when appropriate frame arrives (onset of visual cue):
+            if F == Par.Timing.FixnChecksDurationPt1.nFrames+1
+                sound(this_trial_sound, Par.Disp.AudioSampleRateHz, Par.Disp.AudioBitDepth);
+            end
+            
             % This is the important bit:
             % If we've reached the determined end time of the trial,
             % we reset F and move on to the next one.
             % This means no stimulus ever exceeds its deadline (by more than 1 frame anyway)
             % and we shouldn't miss any either.
             if vbl >= trialEndVBL
-                F = 1;           % Reset F for next trial
+                F = 1;             % Reset F for next trial
                 trialN = trialN+1; % Increment condition/ trial type
-                trialEnd = true; % This should terminate the current stimulus execution and move on to next one
+                trialEnd = true;   % This should terminate the current stimulus execution and move on to next one
             end
         end % end of loop across trial frames
         
@@ -514,6 +620,7 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
     end % end of loop across trial types
     
     Screen('CloseAll')
+    
     % Print out number of missed frames to command window:
     missed_deadlines = Res.Timing.missedFrames
     
@@ -527,6 +634,7 @@ end % End of try/catch statement.
 ShowCursor();
 end % End of main function
 
+%% Sub-functions follow..
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function ExitGracefully (ForcedQuit)
 %...need to shut everything down here...
@@ -546,3 +654,31 @@ if ForcedQuit
 end
 
 end
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function EventCodesMatrix = define_trigger_event_codes (num_trials)
+% Define the trigger event codes to be sent to the serial port
+% Each row is a condition/trial type (1:n), and each column is for trial numbers (consecutive order of presentation),
+% trial onsets, cue onsets, and reward/target onsets,
+% respectively.
+
+EventCodesMatrix = [(101:100+num_trials)' ...% Consecutive trial number
+    (51:50+num_trials)', ...                 % Trial start+condition code
+    (151:150+num_trials)', ...               % Cue onset+condition code
+    (201:200+num_trials)' ...                % Reward/target onset+condition code
+    ];
+
+end
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function send_event_trigger(serial_object, trigger_duration, event_code)
+% Send a trigger over the serial port, as defined in 'event_code'
+% There is an imposed delay (duration) of 'trigger_duration' seconds
+% and then the port is flushed again with zero, ready for next use.
+
+fwrite(serial_object, event_code);
+WaitSecs(trigger_duration);
+fwrite(serial_object, 0);
+
+end
+
+
