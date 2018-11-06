@@ -20,7 +20,7 @@ function BRISC_run_attention_experiment (Participant_ID, sex, block_number)
 
 %% Housekeeping
 clc;
-clear all;
+clear;
 close all;
 
 % Assign default variables, if not entered:
@@ -383,7 +383,7 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
     if Port.InUse
         Port.EventCodes = define_trigger_event_codes(Par.Disp.NumTrialTypes);
     end
-
+    
     %% Determine parameters of each movie displayed on each trial
     % Note that these movie files all have a FPS of 25, which is close to 30, half the frame rate of the display.
     % So we will only want to display a movie image on every 2nd frame, otherwise it will look too fast/jerky.
@@ -470,8 +470,8 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
     % (and alert the attention of the experimenter that the code is ready).
     sound( Par.Disp.AudioCueVolRamp.*Par.Disp.AudioCueWave, Par.Disp.AudioSampleRateHz, Par.Disp.AudioBitDepth);
     
-    %% Save all parameters so far:
-    %save_data(Par, Res, Switch, Port)
+    %% Save all parameters and details so far:
+    save(Res.FileName, 'Par', 'Res', 'Switch', 'Port')
     
     %% Begin the experiment!
     ForcedQuit = false; % this is a flag for the exit function to indicate whether the program was aborted
@@ -604,13 +604,12 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
             % Send event triggers here ...
             % trial onset, cue, reward
             if Port.InUse
-                
                 if F == 1 % send trial onset
                     send_event_trigger(Port.sObj, Port.EventTriggerDuration, ...
                         Port.EventCodes(Par.Timing.RandomTrialOrder(trialN),2)); % Col 2 of event code matrix
-                
+                    
                 elseif F == Par.Timing.FixnChecksDurationPt1.nFrames+1 % Send cue onset
-                               send_event_trigger(Port.sObj, Port.EventTriggerDuration, ...
+                    send_event_trigger(Port.sObj, Port.EventTriggerDuration, ...
                         Port.EventCodes(Par.Timing.RandomTrialOrder(trialN),3)); % Col 3 of event code matrix
                     
                     % Send reward/target onset: it occurs at the sum of the 3 prior periods
@@ -622,11 +621,12 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
                 end
             end
             
+            % Keep record of any missed frames
             if missed > 0
                 Res.Timing.missedFrames = Res.Timing.missedFrames + 1;
             end
             
-            % Check for 'Escape' key
+            % Check for 'Escape' key to abort
             [KeyIsDown, ~, keyCode] = KbCheck();
             if KeyIsDown % a key has been pressed
                 if keyCode(RespQuit)
@@ -664,7 +664,10 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
         
         Screen('Flip', Par.scrID); % Blank screen between trials
         
-    end % end of loop across trial types    
+        % Save updated results file here:
+        %save(Res.FileName, 'Par', 'Res', 'Switch', 'Port')
+        
+    end % end of loop across trial types
     
 catch MException
     
@@ -676,10 +679,11 @@ catch MException
     
 end % End of try/catch statement.
 
-    % Print out number of missed frames to command window:
-    fprintf('\nWe counted %d missed frames in this block',Res.Timing.missedFrames)   
-    % Close down and exit:
-    ExitGracefully (ForcedQuit, Port.sObj)
+Screen('CloseAll')
+% Print out number of missed frames to command window:
+fprintf('\nWe counted %d missed frames in this block',Res.Timing.missedFrames)
+% Close down and exit:
+ExitGracefully (ForcedQuit, Port.sObj)
 
 end % End of main function
 
