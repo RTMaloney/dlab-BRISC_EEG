@@ -1,13 +1,21 @@
 
 function BRISC_run_attention_experiment (Participant_ID, sex, block_number)
+%
+% Inputs:
+%   Participant_ID: number of participant, eg 1,2,3..n
+%   sex: sex/gender of participant; 'string' in format 'm' for boys (male) or 'f' for girls (female)
+%   block_number: the consecutive block/run for this participant, 1,2,3...
+%
 % To do;
-% - what subject info needs to be entered/stored (code,number?),
+% - what subject info needs to be entered/stored (code/number, sex, block?),
 % - *** arrange randomisation control for different trial types *** DONE
-% - serial port calls, including closing it down when exiting/quitting.
+% - serial port calls, including closing it down when exiting/quitting. DONE
 % - do we use desired or corrected trial duration in control of trial stim? (cf Daniel)
 % - make version 3 (simple experiment) in separate code
 % - insert auditory tone! DONE
-% - set up unique file name for saving data
+% - set up unique file name for saving data DONE
+% - store/set aside time stamps for events
+%
 % Flicker freq of checkers will be counterbalanced across babies. (not blocks)
 
 %% Housekeeping
@@ -44,10 +52,49 @@ Port.InUse = true;         % set to true if sending triggers over serial port
 Port.COMport = 'COM4';     % the COM port for the trigger box: should not change on this PC
 Port.EventTriggerDuration = 0.004; % Duration, in sec, of trigger; delay before the port is flushed and set back to zero
 
+% Just check the sex of participant has been entered using format
+% 'm' for males or 'f' for females
+if strcmp(sex, 'm') || strcmp(sex, 'f')
+    %that's correct, so do nothing
+elseif strcmp(sex, 'M')
+    sex = 'm';
+elseif strcmp(sex, 'F')
+    sex = 'f';
+else
+    %any other combination will be wrong!
+    error ('Please enter sex of participant as ''m'' for boys (male) or ''f'' for girls (female)')
+end
+
 % Set aside unique details of this participant/block
 Res.ParticipantInfo.ID = Participant_ID;
 Res.ParticipantInfo.GenderSex = sex;
 Res.BlockNumber = block_number;
+
+% Work out a unique file name for this run.
+% Get a date/time string for this file:
+dateString = datestr(now);
+dateString(dateString == ' ') =  '_';
+dateString(dateString == '-') =  '_';
+dateString(dateString == ':') =  '_';
+%Set aside information
+Res.ExperimentName = 'BRISC_SSVEP_oriented_attention';
+
+% Unique file name for the data to be saved as, and full path for results storage:
+Res.FileName = fullfile('C:\Users\BRISC\Documents\dlab-BRISC_EEG', ...
+    'data', ['P', num2str(Participant_ID), '_', ...  %P for participant
+    sex, '_', Res.ExperimentName, ...
+    ['_' , dateString, '_'] ...
+    num2str( block_number ), ...                     % Final value is block number
+    '.mat']);
+
+% Just abort if the file already exists
+% (this should never be needed, but just in case):
+if exist(Res.FileName,'file')
+    userResponse = input('WARNING: Run file exists. Overwrite? Enter y or n: ','s');
+    if ~strcmp( userResponse, 'y' )
+        error('Aborting function! File exists!');
+    end
+end
 
 % Query the machine we're running:
 [~, Par.ComputerName] = system('hostname');
@@ -584,7 +631,7 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
             if KeyIsDown % a key has been pressed
                 if keyCode(RespQuit)
                     ForcedQuit = true
-                    ExitGracefully(ForcedQuit)
+                    ExitGracefully(ForcedQuit, Port.sObj)
                 end
             end
             
@@ -617,26 +664,28 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
         
         Screen('Flip', Par.scrID); % Blank screen between trials
         
-    end % end of loop across trial types
-    
-    Screen('CloseAll')
-    
-    % Print out number of missed frames to command window:
-    missed_deadlines = Res.Timing.missedFrames
+    end % end of loop across trial types    
     
 catch MException
     
     % We throw the error again so the user sees the error description.
+    rethrow (MException)
     psychrethrow(psychlasterror);
-    Screen('CloseAll')
+    ExitGracefully (ForcedQuit, Port.sObj)
+    error('Error!')
     
 end % End of try/catch statement.
-ShowCursor();
+
+    % Print out number of missed frames to command window:
+    fprintf('\nWe counted %d missed frames in this block',Res.Timing.missedFrames)   
+    % Close down and exit:
+    ExitGracefully (ForcedQuit, Port.sObj)
+
 end % End of main function
 
 %% Sub-functions follow..
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function ExitGracefully (ForcedQuit)
+function ExitGracefully (ForcedQuit, serial_object)
 %...need to shut everything down here...
 
 % turn off the prioritisation:
@@ -648,13 +697,17 @@ Screen('CloseAll')
 % Bring back the mouse cursor:
 ShowCursor();
 
+% Close down the serial port (if used)
+if ~isempty(serial_object)
+    fclose(serial_object);
+end
+
 % announce to cmd window if the program was aborted by the user
 if ForcedQuit
     error('You quit the program!')
 end
 
 end
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function EventCodesMatrix = define_trigger_event_codes (num_trials)
 % Define the trigger event codes to be sent to the serial port
