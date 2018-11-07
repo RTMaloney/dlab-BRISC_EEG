@@ -21,7 +21,7 @@ if nargin < 3 || isempty (block_number), block_number = 1; end
 
 if nargin < 2 || isempty (sex), sex = 'm'; end
 
-if nargin < 1 || isempty (Participant_ID), Participant_ID = 1; end
+if nargin < 1 || isempty (Participant_ID), Participant_ID = 0; end
 
 %% Set Up Structures Used in Experiment
 Par = struct(); % For experimental parameters

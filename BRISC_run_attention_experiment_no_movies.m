@@ -1,8 +1,10 @@
-function BRISC_run_attention_experiment_no_movies (Participant_ID)
+function BRISC_run_attention_experiment_no_movies
 %
 % This is the same as the BRISC_run_attention_experiment.m, except the flag to display movies
 % is set to false; use to habituate babies to the flickering checkerboards 
 % prior to main experiment
+% No inputs required, no variables saved.
+% Serial port is off.
 %
 % Flicker freq of checkers will be counterbalanced across babies. (not blocks)
 
@@ -12,7 +14,7 @@ clear;
 close all;
 
 % Assign default variables, if not entered:
-if nargin < 1 || isempty (Participant_ID), Participant_ID = 1; end
+Participant_ID = 0;
 
 %% Set Up Structures Used in Experiment
 Par = struct(); % For experimental parameters

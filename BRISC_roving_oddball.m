@@ -35,6 +35,8 @@ Switch = struct(); % For experimental control
 Par.nTonesPerBlock = 528; % Number of tones presented in a block
 Par.Timing.SOA_Duration_Sec = 0.5; % SOA between consecutive tones in seconds
 
+% Duration required for sending event codes
+Par.Timing.EventCodeDuration = 0.004;
 
 % --- Auditory Tone Parameters ---
 
@@ -131,9 +133,16 @@ end
 %% Define the event code triggers
 if Port.InUse
     
-%     Port.EventCodes = define_trigger_event_codes(Par.Disp.NumTrialTypes);
     
-end
+    % Trigger numbers 101-130 denotes the different tone frequencies
+    Port.EventCodes.toneFreqs = 111:140;
+
+    % Trigger numbers 201-236 denote the number of repetitions of the tone
+    Port.EventCodes.repetitionNumbers = 201:236;
+    
+    
+    
+end % of if Port.InUse
 
 
 
@@ -205,19 +214,70 @@ WaitSecs(3);
 
 %% Present Auditory Stimuli in the Block
 
+% Reset counter variable denoting number of tone repetitions
+nReps = 1;
+
+
+
 for trial = 1:Par.nTonesPerBlock
     
     %% - Get relevant trial information (tone frequency, trigger number etc)
     
     toneThisTrial = Par.toneForEachTrial(trial);
     
+    % Check for tone repetitions
+    if trial > 1 && toneThisTrial == Par.toneForEachTrial(trial - 1) % If repeated tone
+    
+        nReps = nReps + 1;
+        
+    elseif trial > 1 && toneThisTrial ~= Par.toneForEachTrial(trial - 1) % If changed tone
+    
+        nReps = 1;
+        
+    end % of if toneThisTrial
 
-
+    
+    
     %% - Send triggers
     
+    % Trigger Denoting Block Number
+    send_event_trigger(Port.sObj, Port.EventTriggerDuration, ...
+                        block_number); 
+    
+    % Wait a litle bit before sending the code
+    WaitSecs(0.01);
+    
+    % Get hundreds and tens + ones counters for trial number
+    trial_hundredsCounter = floor(trial / 100);
+    trial_tensCounter = rem(trial, 100);
+    
+    % Trigger Denoting Trial Number (2 triggers for this)
+    % Denoting hundreds first
+    send_event_trigger(Port.sObj, Port.EventTriggerDuration, ...
+                        trial_hundredsCounter + 1); 
+                    
+    % Wait a litle bit before sending the code
+    WaitSecs(0.01);
+    
+    % Then denoting tens + ones
+    send_event_trigger(Port.sObj, Port.EventTriggerDuration, ...
+                        trial_tensCounter + 1); 
+    
+    % Wait a litle bit before sending the code
+    WaitSecs(0.01);
+                        
+    % Trigger denoting the repetition number of the tone
+    send_event_trigger(Port.sObj, Port.EventTriggerDuration, ...
+                        Port.EventCodes.repetitionNumbers(nReps));  
+                    
+    % Waits for SOA duration to elapse before playing tone
+    while GetSecs < Res.Timing.toneOnset(trial) + Par.Timing.SOA_Duration_Sec - Par.Timing.EventCodeDuration;
+    
+    end % of while GetSecs
+    
     % Trigger denoting the tone presented in the current trial
-%     send_event_trigger(Port.sObj, Port.EventTriggerDuration, ...
-%                         Port.EventCodes(toneThisTrial)); 
+    send_event_trigger(Port.sObj, Port.EventTriggerDuration, ...
+                        Port.EventCodes.toneFreqs(toneThisTrial)); 
                     
     
     %% - Play tone    
@@ -234,7 +294,7 @@ for trial = 1:Par.nTonesPerBlock
     
     %% - Wait during the ISI
     % Waits for SOA duration minus event trigger duration (to account for time it takes to send a trigger)
-    while GetSecs < Res.Timing.toneOnset(trial) + Par.Timing.SOA_Duration_Sec - Port.EventTriggerDuration;
+    while GetSecs < Res.Timing.toneOnset(trial) + Par.Timing.SOA_Duration_Sec - 0.1;
     
     
     end % of while GetSecs
@@ -245,20 +305,8 @@ end % of for trial
 
 
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function EventCodesMatrix = define_trigger_event_codes (num_trials)
-% Define the trigger event codes to be sent to the serial port
-% Each row is a condition/trial type (1:n), and each column is for trial numbers (consecutive order of presentation),
-% trial onsets, cue onsets, and reward/target onsets,
-% respectively.
 
-EventCodesMatrix = [(101:100+num_trials)' ...% Consecutive trial number
-    (51:50+num_trials)', ...                 % Trial start+condition code
-    (151:150+num_trials)', ...               % Cue onset+condition code
-    (201:200+num_trials)' ...                % Reward/target onset+condition code
-    ];
 
-end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function send_event_trigger(serial_object, trigger_duration, event_code)
