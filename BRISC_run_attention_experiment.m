@@ -1,4 +1,3 @@
-
 function BRISC_run_attention_experiment (Participant_ID, sex, block_number)
 %
 % Inputs:
@@ -8,13 +7,7 @@ function BRISC_run_attention_experiment (Participant_ID, sex, block_number)
 %
 % To do;
 % - what subject info needs to be entered/stored (code/number, sex, block?),
-% - *** arrange randomisation control for different trial types *** DONE
-% - serial port calls, including closing it down when exiting/quitting. DONE
-% - do we use desired or corrected trial duration in control of trial stim? (cf Daniel)
 % - make version 3 (simple experiment) in separate code
-% - insert auditory tone! DONE
-% - set up unique file name for saving data DONE
-% - store/set aside time stamps for events DONE
 %
 % Flicker freq of checkers will be counterbalanced across babies. (not blocks)
 
@@ -216,8 +209,9 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
         Par.Timing.FixnChecksDurationPt2.uncorrected + ...
         Par.Timing.RewardDuration.uncorrected;
     
-    % How long between trials? Define the inter-trial interval here (in sec)
-    Par.Disp.InterTrialInterval = 2;
+    % How long between trials? Define the IMPOSED inter-trial interval here (in sec)
+    % Note that loading the movie takes some time, so the actual delay will be slightly longer than this
+    Par.Disp.InterTrialInterval = 0.5;
     
     % Adjust stimulus presentation durations to exact multiples of the screen
     % refresh duration
@@ -553,6 +547,27 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
         WaitSecs(0.002);
         KbCheck();
         
+        % Wait for user response to continue...
+        ButtonPressed = 0;
+        while ~ButtonPressed
+            % if 'Esc' is pressed, abort
+            [KeyIsDown, ~, keyCode] = KbCheck();
+            if KeyIsDown % a key has been pressed
+                if keyCode(RespQuit)
+                    ForcedQuit = true
+                    ExitGracefully(ForcedQuit, Port.sObj)
+                    
+                elseif keyCode(Proceed) % If the space bar has been pressed, proceed
+                    
+                    %Refresh screen
+                    DrawFormattedText(Par.scrID, num2str(trialN), ...
+                        'center', 'center', 0);
+                    Screen('Flip', Par.scrID);
+                    ButtonPressed = 1;
+                end
+            end
+        end
+        
         if Switch.DrawMovies
             % Open a new movie object for this trial, at the random start time defined above:
             movieObj = VideoReader(Par.Disp.MoviesUsed.movieFileName{trialN}, ...
@@ -569,22 +584,6 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
         % If there is no auditory tone, the sound is set to zero.
         this_trial_sound = Par.Disp.AuditoryCueOn(Par.Timing.RandomTrialOrder(trialN)).* ...
             Par.Disp.AudioCueVolRamp.*Par.Disp.AudioCueWave;
-        
-        % Wait for user response to continue...
-        ButtonPressed = 0;
-        while ~ButtonPressed
-            % if 'Esc' is pressed, abort
-            [KeyIsDown, ~, keyCode] = KbCheck();
-            if KeyIsDown % a key has been pressed
-                if keyCode(RespQuit)
-                    ForcedQuit = true
-                    ExitGracefully(ForcedQuit, Port.sObj)
-                    
-                elseif keyCode(Proceed) % If the space bar has been pressed, proceed
-                    ButtonPressed = 1;
-                end
-            end
-        end
         
         % Refresh the screen after the wait period, and take new vbl timestamp to control the ITI
         DrawFormattedText(Par.scrID, num2str(trialN), ...
