@@ -14,7 +14,7 @@ function BRISC_run_attention_experiment (Participant_ID, sex, block_number)
 % - make version 3 (simple experiment) in separate code
 % - insert auditory tone! DONE
 % - set up unique file name for saving data DONE
-% - store/set aside time stamps for events DONE
+% - store/set aside time stamps for events
 %
 % Flicker freq of checkers will be counterbalanced across babies. (not blocks)
 
@@ -83,7 +83,7 @@ Res.ExperimentName = 'BRISC_SSVEP_oriented_attention';
 Res.FileName = fullfile('C:\Users\BRISC\Documents\dlab-BRISC_EEG', ...
     'data', ['P', num2str(Participant_ID), '_', ...  %P for participant
     sex, '_', Res.ExperimentName, ...
-    '_',  num2str( block_number ), ...                     % Final value is block number
+      '_',  num2str( block_number ), ...                     % Final value is block number
     '_' , dateString ...
     '.mat']);
 
@@ -270,7 +270,7 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
     % This gives us a logical array indicating when to store a timestamp for the left and right checkerboards.
     Par.Disp.CheckerReversalsLeft = ismember(1:length(Par.Disp.ChecksDutyCycles(:,1)), Par.Disp.CheckerReversalsLeft);
     Par.Disp.CheckerReversalsRight = ismember(1:length(Par.Disp.ChecksDutyCycles(:,2)), Par.Disp.CheckerReversalsRight);
-    
+
     
     %% Set up timing duty cycles for the cue / reward stimulus.
     % Cue will be bright red border around the checkerboard (RGB= 1 0 0).
@@ -524,13 +524,13 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
     Res.Timing.CueOnsetTimestamps = [];
     Res.Timing.RewardOnsetTimestamps = [];
     % And for the checkerboard contrast reverals:
-    Res.Timing.CheckerContRevTimestampsLeft = cell(1,10); % empty cell arrays, 1 cell for each (potential) trial
-    Res.Timing.CheckerContRevTimestampsRight = cell(1,10);
+    Res.Timing.LeftCheckerContRevTimestamps = cell(1); % cell arrays, 1 cell for each trial
+    Res.Timing.RightCheckerContRevTimestamps = cell(1,10)
     
-    %Res.Timing.RightCheckerContRevTimestamps = cellfun(@(x) [], Res.Timing.RightCheckerContRevTimestamps, 'UniformOutput', false);
+    Res.Timing.RightCheckerContRevTimestamps = cellfun(@(x) [], Res.Timing.RightCheckerContRevTimestamps, 'UniformOutput', false);
     
-    %Par.Disp.MoviePaths = cellfun(@(x) fullfile(Par.Disp.video_dir, x), Par.Disp.MoviePaths, 'UniformOutput', false);
-    
+            %Par.Disp.MoviePaths = cellfun(@(x) fullfile(Par.Disp.video_dir, x), Par.Disp.MoviePaths, 'UniformOutput', false);
+
     trialN = 1; % Counter to increment across TRIALS
     F = 1; % Counter to increment across FRAMES
     
@@ -548,10 +548,6 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
             '\n \n Press ''space'' when ready to continue'], ...
             'center', 'center', 0);
         Screen('Flip', Par.scrID);
-        % Flush the keyboard buffer
-        KbCheck();
-        WaitSecs(0.002);
-        KbCheck();
         
         if Switch.DrawMovies
             % Open a new movie object for this trial, at the random start time defined above:
@@ -581,6 +577,7 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
                     ExitGracefully(ForcedQuit, Port.sObj)
                     
                 elseif keyCode(Proceed) % If the space bar has been pressed, proceed
+                    
                     ButtonPressed = 1;
                 end
             end
@@ -689,12 +686,18 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
             end
             
             % Set aside timestamps of checkerboard contrast reversals:
-            if Par.Disp.CheckerReversalsLeft(F) % Left checkerboards
-                Res.Timing.CheckerContRevTimestampsLeft{trialN} = [Res.Timing.CheckerContRevTimestampsLeft{trialN}(:); vbl];
+            
+            if Par.Disp.CheckerReversalsLeft(F)
+            Res.Timing.CheckerContRevTimestampsLeft{trialN} = [Res.Timing.CheckerContRevTimestampsLeft{trialN}(:), vbl];
             end
-            if Par.Disp.CheckerReversalsRight(F) % Right checkerboards
-                Res.Timing.CheckerContRevTimestampsRight{trialN} = [Res.Timing.CheckerContRevTimestampsRight{trialN}(:); vbl];
+            
+             if Par.Disp.CheckerReversalsRight(F)
+            Res.Timing.CheckerContRevTimestampsRight{trialN} = [Res.Timing.CheckerContRevTimestampsRight{trialN}(:), vbl];
             end
+            
+            Res.Timing.RightCheckerContRevTimestamps{1} = [Res.Timing.RightCheckerContRevTimestamps{1}(:), vbl]
+            
+            Res.Timing.RightCheckerContRevTimestamps
             
             % Keep record of any missed frames
             if missed > 0
