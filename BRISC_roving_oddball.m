@@ -54,9 +54,10 @@ fullVolDuration = 0.18; % Duration of full-volume period of the tone
 
 
 % SERIAL PORT
-Port.InUse = false;         % set to true if sending triggers over serial port
+Port.InUse = true;         % set to true if sending triggers over serial port
 Port.COMport = 'COM4';     % the COM port for the trigger box: should not change on this PC
 Port.EventTriggerDuration = 0.004; % Duration, in sec, of trigger; delay before the port is flushed and set back to zero
+
 
 % Just check the sex of participant has been entered using format
 % 'm' for males or 'f' for females
@@ -217,7 +218,7 @@ WaitSecs(3);
 % Reset counter variable denoting number of tone repetitions
 nReps = 1;
 
-
+Res.Timing.toneOnset(1) = GetSecs;
 
 for trial = 1:Par.nTonesPerBlock
     
@@ -243,6 +244,7 @@ for trial = 1:Par.nTonesPerBlock
     % Trigger Denoting Block Number
     send_event_trigger(Port.sObj, Port.EventTriggerDuration, ...
                         block_number); 
+                    
     
     % Wait a litle bit before sending the code
     WaitSecs(0.01);
@@ -270,10 +272,10 @@ for trial = 1:Par.nTonesPerBlock
     send_event_trigger(Port.sObj, Port.EventTriggerDuration, ...
                         Port.EventCodes.repetitionNumbers(nReps));  
                     
-    % Waits for SOA duration to elapse before playing tone
-    while GetSecs < Res.Timing.toneOnset(trial) + Par.Timing.SOA_Duration_Sec - Par.Timing.EventCodeDuration;
-    
-    end % of while GetSecs
+%     % Waits for SOA duration to elapse before playing tone
+%     while GetSecs < Res.Timing.toneOnset(trial) + Par.Timing.SOA_Duration_Sec - Par.Timing.EventCodeDuration
+%     
+%     end % of while GetSecs
     
     % Trigger denoting the tone presented in the current trial
     send_event_trigger(Port.sObj, Port.EventTriggerDuration, ...

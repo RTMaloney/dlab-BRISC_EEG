@@ -1,12 +1,15 @@
 function BRISC_run_attention_experiment_no_movies
 %
 % This is the same as the BRISC_run_attention_experiment.m, except the flag to display movies
-% is set to false; use to habituate babies to the flickering checkerboards 
+% is set to false; use to habituate babies to the flickering checkerboards
 % prior to main experiment
-% No inputs required, no variables saved.
-% Serial port is off.
+%   No inputs required, no variables saved.
+%   Serial port is off.
+%   Auditory cues turned off (set to zero).
+%   Cue and reward stimulus turned off (simply commented from stimulus display loop)
+%   No wait period between trials.
 %
-% Flicker freq of checkers will be counterbalanced across babies. (not blocks)
+% Flicker freq of checkers presented at L/R sides determined at random.
 
 %% Housekeeping
 clc;
@@ -14,7 +17,7 @@ clear;
 close all;
 
 % Assign default variables, if not entered:
-Participant_ID = 0;
+Participant_ID = round(rand);
 
 %% Set Up Structures Used in Experiment
 Par = struct(); % For experimental parameters
@@ -162,7 +165,7 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
         Par.Timing.RewardDuration.uncorrected;
     
     % How long between trials? Define the inter-trial interval here (in sec)
-    Par.Disp.InterTrialInterval = 2;
+    Par.Disp.InterTrialInterval = 0;
     
     % Adjust stimulus presentation durations to exact multiples of the screen
     % refresh duration
@@ -420,6 +423,11 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
     % Make the volume ramp for the sound, 100 ms over start/finish, so there are no harsh auditory onsets:
     Par.Disp.AudioCueVolRamp = [linspace(0,1, Par.Disp.AudioSampleRateHz*0.01), ...
         ones(1,Par.Disp.AudioSampleRateHz*0.03), linspace(1,0, Par.Disp.AudioSampleRateHz*0.01)];
+    
+    % *** kill sound completely for no movies versio:
+    
+    Par.Disp.AudioCueVolRamp = Par.Disp.AudioCueVolRamp.*0;
+    
     % Play the sound once, just to load the function before the experiment begins
     % (and alert the attention of the experimenter that the code is ready).
     sound( Par.Disp.AudioCueVolRamp.*Par.Disp.AudioCueWave, Par.Disp.AudioSampleRateHz, Par.Disp.AudioBitDepth);
@@ -429,11 +437,11 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
     
     %% Begin the experiment!
     ForcedQuit = false; % this is a flag for the exit function to indicate whether the program was aborted
-    %HideCursor;
+    HideCursor;
     
     % Display welcome screen
     Screen('TextFont',Par.scrID, 'Arial');
-    Screen('TextSize',Par.scrID, 44);
+    Screen('TextSize',Par.scrID, 52);
     DrawFormattedText(Par.scrID,['Welcome ', ...
         '\n \nPress any key to begin.', ...
         '\n \nOr press ''Esc'' to exit at any time.'], ...
@@ -456,7 +464,7 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
     end
     
     %% Initialise variables to control stimulus presentation:
-    WaitSecs(0.2)
+    WaitSecs(0.2);
     KbCheck(); % take a quick KbCheck to load it now & flush any stored events
     
     % Blank the screen and wait 2 secs before beginning.
@@ -472,10 +480,6 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
     Res.Timing.CheckerContRevTimestampsLeft = cell(1,10); % empty cell arrays, 1 cell for each (potential) trial
     Res.Timing.CheckerContRevTimestampsRight = cell(1,10);
     
-    %Res.Timing.RightCheckerContRevTimestamps = cellfun(@(x) [], Res.Timing.RightCheckerContRevTimestamps, 'UniformOutput', false);
-    
-    %Par.Disp.MoviePaths = cellfun(@(x) fullfile(Par.Disp.video_dir, x), Par.Disp.MoviePaths, 'UniformOutput', false);
-    
     trialN = 1; % Counter to increment across TRIALS
     F = 1; % Counter to increment across FRAMES
     
@@ -487,16 +491,24 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
     %% Display stimuli!
     while trialN <= Par.Disp.NumTrialTypes % Begin loop across trial types
         
-        % Display trial number of screen:
+        % Display trial number of screen: *** switched off ***
         % DrawFormattedText(Par.scrID, [num2str(trialN) ',' num2str(Par.Timing.RandomTrialOrder(trialN))], ...% :to display trialNo+ trial type code
-        DrawFormattedText(Par.scrID, [num2str(trialN), ...
-            '\n \n Press ''space'' when ready to continue'], ...
-            'center', 'center', 0);
-        Screen('Flip', Par.scrID);
-        % Flush the keyboard buffer
-        KbCheck();
-        WaitSecs(0.002);
-        KbCheck();
+        %         DrawFormattedText(Par.scrID, [num2str(trialN), ...
+        %             '\n \n Press ''space'' when ready to continue'], ...
+        %             'center', 'center', 0);
+        %         Screen('Flip', Par.scrID);
+        %         Flush the keyboard buffer
+        %         KbCheck();
+        %         WaitSecs(0.002);
+        %         KbCheck();
+        
+        % *** here we determine at random what flicker frequency is presented on either side for each trial ***
+        r = round(rand);
+        if r
+            centeredCheckRect = flipud(centeredCheckRect); % flip left and right coordinates.
+        end
+        
+        
         
         if Switch.DrawMovies
             % Open a new movie object for this trial, at the random start time defined above:
@@ -516,7 +528,7 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
             Par.Disp.AudioCueVolRamp.*Par.Disp.AudioCueWave;
         
         % Wait for user response to continue...
-        ButtonPressed = 0;
+        ButtonPressed = 1;  % *** set to one to eliminate this wait period ***
         while ~ButtonPressed
             % if 'Esc' is pressed, abort
             [KeyIsDown, ~, keyCode] = KbCheck();
@@ -532,8 +544,9 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
         end
         
         % Refresh the screen after the wait period, and take new vbl timestamp to control the ITI
-        DrawFormattedText(Par.scrID, num2str(trialN), ...
-            'center', 'center', 0);
+        
+        %DrawFormattedText(Par.scrID, num2str(trialN), ...  *** switch off display of trial number ***
+        %  'center', 'center', 0);
         [vbl , ~ , ~, ~] = Screen('Flip', Par.scrID);
         
         % Insert inter-trial interval (ITI)
@@ -570,13 +583,13 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
         trialEnd = false;
         while ~trialEnd %This should keep iterating across stim frames until vbl >= trialEndVBL
             
-            % Draw the cue + reward stimuli:
-            Screen('FillRect', Par.scrID, ... % Left hand cue/reward
-                Par.Timing.LeftCueStimulusRGB{Par.Timing.RandomTrialOrder(trialN)}(F,:), ...
-                centeredCueRect(1,:));
-            Screen('FillRect', Par.scrID, ... % Right hand cue/reward
-                Par.Timing.RightCueStimulusRGB{Par.Timing.RandomTrialOrder(trialN)}(F,:), ...
-                centeredCueRect(2,:));
+            % Draw the cue + reward stimuli: *** switched off here ***
+            %Screen('FillRect', Par.scrID, ... % Left hand cue/reward
+            %   Par.Timing.LeftCueStimulusRGB{Par.Timing.RandomTrialOrder(trialN)}(F,:), ...
+            %   centeredCueRect(1,:));
+            %Screen('FillRect', Par.scrID, ... % Right hand cue/reward
+            %   Par.Timing.RightCueStimulusRGB{Par.Timing.RandomTrialOrder(trialN)}(F,:), ...
+            %   centeredCueRect(2,:));
             
             %Draw the checkerboard stimuli:
             Screen('DrawTextures', Par.scrID, ...

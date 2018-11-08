@@ -1,27 +1,42 @@
-function BRISC_run_attention_experiment (Participant_ID, sex, block_number)
+function BRISC_run_attention_experiment 
 %
-% Inputs:
-%   Participant_ID: number of participant, eg 1,2,3..n
-%   sex: sex/gender of participant; 'string' in format 'm' for boys (male) or 'f' for girls (female)
-%   block_number: the consecutive block/run for this participant, 1,2,3...
+% Inputs (requested):
+%   Participant_ID: the unique ID code for this participant, as a 'string'
+%       in the format '1M0001'
+%       First digit will be 1-3,
+%       2nd character is M for boys (male, M) or F for girls (female, F)
+%       then 4-digit unique number
+%   subgroupCode: 'M' for Midline, 'E' for endline (or 'B' for baseline), as a 'string'
+%   block_number: the consecutive block/run for this experiment and this participant, 1,2,3...
 %
-% To do;
-% - what subject info needs to be entered/stored (code/number, sex, block?),
-% - make version 3 (simple experiment) in separate code
+% About: this runs the main SSVEP experiment, displaying flickering checkerboards and a dynamic movie (The Wiggles).
+% There are 10 conditions in the full version.
 %
-% Flicker freq of checkers will be counterbalanced across babies. (not blocks)
+% Flicker freq of checkers placed on L or R side will be counterbalanced across babies. (not blocks)
 
 %% Housekeeping
 clc;
 clear;
 close all;
 
-% Assign default variables, if not entered:
-if nargin < 3 || isempty (block_number), block_number = 1; end
+% Request input of variables:
+Participant_ID = input('\n Please enter the unique 6-character participant ID/code, eg. ''1F0001'': ');
+stageCode = input('\n Please enter the trial stage code, eg. ''M'' or ''E'': ');
+block_number = input('\n Please enter experiment run/block number: ');
 
-if nargin < 2 || isempty (sex), sex = 'm'; end
+% If the Participant ID seems wrong, request again:
+if length(Participant_ID) ~= 6
+    fprintf('\n Participant ID/code incorrect format.')
+    Participant_ID = input('\n Please enter the unique 6-character participant ID/code, eg. ''1F0001'': ');
+end
 
-if nargin < 1 || isempty (Participant_ID), Participant_ID = 0; end
+% Pull out integer from participant ID to use to determine counterbalancing of checker frequencies:
+checkerflip = str2double(Participant_ID(1));
+% If that doesn't work... suggests ID code is wrong:
+if isnan(checkerflip)
+    fprintf('\n Participant ID/code incorrect format.')
+Participant_ID = input('\n Please enter the unique 6-character participant ID/code, eg. ''1F0001'': ');
+end
 
 %% Set Up Structures Used in Experiment
 Par = struct(); % For experimental parameters
@@ -36,31 +51,20 @@ Switch = struct(); % For experimental control
 % Version 1 = full version, all condition types, OR
 % Version 2 = omits double cue and no cue, no tone conditions (fewer trials)
 %(Version 3 has its own separate function).
+% *** There should be no need to change this here ***
 Switch.ExperimentVersion = 1;
 
 Switch.DrawMovies = true; % set to true or false to determine movie playback.
 
 % SERIAL PORT
-Port.InUse = false;         % set to true if sending triggers over serial port
+Port.InUse = true;         % set to true if sending triggers over serial port
 Port.COMport = 'COM4';     % the COM port for the trigger box: should not change on this PC
 Port.EventTriggerDuration = 0.004; % Duration, in sec, of trigger; delay before the port is flushed and set back to zero
 
-% Just check the sex of participant has been entered using format
-% 'm' for males or 'f' for females
-if strcmp(sex, 'm') || strcmp(sex, 'f')
-    %that's correct, so do nothing
-elseif strcmp(sex, 'M')
-    sex = 'm';
-elseif strcmp(sex, 'F')
-    sex = 'f';
-else
-    %any other combination will be wrong!
-    error ('Please enter sex of participant as ''m'' for boys (male) or ''f'' for girls (female)')
-end
-
 % Set aside unique details of this participant/block
 Res.ParticipantInfo.ID = Participant_ID;
-Res.ParticipantInfo.GenderSex = sex;
+Res.ParticipantInfo.GenderSex = Participant_ID(2);
+Res.ParticipantInfo.TrailStageCode = stageCode;
 Res.BlockNumber = block_number;
 
 % Work out a unique file name for this run.
@@ -70,13 +74,14 @@ dateString(dateString == ' ') =  '_';
 dateString(dateString == '-') =  '_';
 dateString(dateString == ':') =  '_';
 %Set aside information
-Res.ExperimentName = 'BRISC_SSVEP_oriented_attention';
+Res.ExperimentName = 'BRISC_movies';
 
 % Unique file name for the data to be saved as, and full path for results storage:
-Res.FileName = fullfile('C:\Users\BRISC\Documents\dlab-BRISC_EEG', ...
-    'data', ['P', num2str(Participant_ID), '_', ...  %P for participant
-    sex, '_', Res.ExperimentName, ...
-    '_',  num2str( block_number ), ...                     % Final value is block number
+Res.FileName = fullfile('C:\Users\BRISC\Documents\dlab-BRISC_EEG', ... % Full path for data file
+    'data', [Participant_ID, '_', ...  % Unique participant code
+    stageCode, '_', ... % The stage of the trial (M for midline or E for endline).
+    Res.ExperimentName, ...
+    '_',  num2str( block_number ), ... % Current block
     '_' , dateString ...
     '.mat']);
 
@@ -100,7 +105,7 @@ Par.MatlabVersion = version;
 % Unify the keyboard names in case we run this on a mac:
 KbName('UnifyKeyNames')
 % Define escape key:
-RespQuit = KbName('escape'); % Hit 'Esq' to quit/abort program.
+RespQuit = KbName('escape'); % Hit 'Esc' to quit/abort program.
 Proceed = KbName('space');   % Press 'space' to proceed to next trial, when ready
 
 %% Screen Initialisation
@@ -146,8 +151,8 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
     
     % Display wait screen
     Screen('TextFont',Par.scrID, 'Arial');
-    Screen('TextSize',Par.scrID, 44);
-    DrawFormattedText(Par.scrID,['Please wait...'], ...
+    Screen('TextSize',Par.scrID, 52);
+    DrawFormattedText(Par.scrID,'Please wait...', ...
         'center', 'center', 0);
     Screen('Flip', Par.scrID);
     
@@ -244,7 +249,7 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
     
     % Temporal frequencies of the two checkerboards: determine left/right placing
     % based on whether the participant ID number is odd or even (method of counterbalancing across individuals).
-    if mod(Participant_ID,2)    % If it's an odd-numbered participant
+    if mod(checkerflip,2)    % If it's an odd-numbered participant
         Par.Disp.CheckFreqHz = [6 10]; % 6 Hz on left, 10 Hz on right
         
     else                        % otherwise, if it's an even-numbered participant, do the opposite
@@ -460,7 +465,7 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
     % We'll use matlab's sound player function for an auditory cue of 50 ms
     Par.Disp.AudioCueDuration = Par.Timing.CueDuration.uncorrected/2; % Audio duration as proportion of visual cue duration
     Par.Disp.AudioSampleRateHz = 48000;                               % This is the default for this machine
-    Par.Disp.AudioBitDepth = 24;                                      % Bits per sample: defauly bit depth for this machine
+    Par.Disp.AudioBitDepth = 24;                                      % Bits per sample: default bit depth for this machine
     Par.Disp.AudioToneFreqHz = 2000;                                  % Frequency of the sine wave we want to play
     % Make the sine wave:
     Par.Disp.AudioCueWave = sin(2*pi*Par.Disp.AudioToneFreqHz* ...
@@ -478,11 +483,11 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
     
     %% Begin the experiment!
     ForcedQuit = false; % this is a flag for the exit function to indicate whether the program was aborted
-    %HideCursor;
+    HideCursor;
     
     % Display welcome screen
     Screen('TextFont',Par.scrID, 'Arial');
-    Screen('TextSize',Par.scrID, 44);
+    Screen('TextSize',Par.scrID, 52);
     DrawFormattedText(Par.scrID,['Welcome ', ...
         '\n \nPress any key to begin.', ...
         '\n \nOr press ''Esc'' to exit at any time.'], ...
@@ -505,7 +510,7 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
     end
     
     %% Initialise variables to control stimulus presentation:
-    WaitSecs(0.2)
+    WaitSecs(0.2);
     KbCheck(); % take a quick KbCheck to load it now & flush any stored events
     
     % Blank the screen and wait 2 secs before beginning.
@@ -520,11 +525,7 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
     % And for the checkerboard contrast reverals:
     Res.Timing.CheckerContRevTimestampsLeft = cell(1,10); % empty cell arrays, 1 cell for each (potential) trial
     Res.Timing.CheckerContRevTimestampsRight = cell(1,10);
-    
-    %Res.Timing.RightCheckerContRevTimestamps = cellfun(@(x) [], Res.Timing.RightCheckerContRevTimestamps, 'UniformOutput', false);
-    
-    %Par.Disp.MoviePaths = cellfun(@(x) fullfile(Par.Disp.video_dir, x), Par.Disp.MoviePaths, 'UniformOutput', false);
-    
+        
     trialN = 1; % Counter to increment across TRIALS
     F = 1; % Counter to increment across FRAMES
     
