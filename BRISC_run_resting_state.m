@@ -1,4 +1,10 @@
-%BRISC_run_resting_state
+% BRISC_bubbles
+% (BRISC_run_resting_state)
+% Display resting state 'bubbles' stimulus, and send triggers.
+% Should be run for approximately 2 minutes.
+% GarboriumDemo_RM.m is run; a colour modification of the popular PTB function GarboriumDemo.
+
+
 
 clc
 clear;
@@ -11,6 +17,14 @@ Port = struct();% Pertaining to the serial port, for sending triggers.
 Port.InUse = true;         % set to true if sending triggers over serial port
 Port.COMport = 'COM4';     % the COM port for the trigger box: should not change on this PC
 Port.EventTriggerDuration = 0.004; % Duration, in sec, of trigger; delay before the port is flushed and set back to zero
+
+% Just do quick warning if triggers are switched OFF:
+if ~Port.InUse
+    userResponse = input('WARNING: Serial port is OFF. No triggers will be sent. Continue? Enter y or n: ','s');
+    if strcmp( userResponse, 'n' )
+        error('Aborting function!');
+    end
+end
 
 %% Open the serial device for triggers (if using)
 if Port.InUse
@@ -25,7 +39,7 @@ end
 
 send_event_trigger(Port.sObj, Port.EventTriggerDuration, 100)
 
-GarboriumDemo (500)
+GarboriumDemo_RM (350) ; % Display colour modified version of GarboriumDemo
 
 % Close the serial port:
 fclose(Port.sObj);

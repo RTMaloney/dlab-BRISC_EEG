@@ -1,4 +1,4 @@
-function BRISC_run_attention_experiment 
+function BRISC_run_attention_experiment
 %
 % Inputs (requested):
 %   Participant_ID: the unique ID code for this participant, as a 'string'
@@ -35,7 +35,7 @@ checkerflip = str2double(Participant_ID(1));
 % If that doesn't work... suggests ID code is wrong:
 if isnan(checkerflip)
     fprintf('\n Participant ID/code incorrect format.')
-Participant_ID = input('\n Please enter the unique 6-character participant ID/code, eg. ''1F0001'': ');
+    Participant_ID = input('\n Please enter the unique 6-character participant ID/code, eg. ''1F0001'': ');
 end
 
 %% Set Up Structures Used in Experiment
@@ -57,9 +57,17 @@ Switch.ExperimentVersion = 1;
 Switch.DrawMovies = true; % set to true or false to determine movie playback.
 
 % SERIAL PORT
-Port.InUse = true;         % set to true if sending triggers over serial port
+Port.InUse = false;         % set to true if sending triggers over serial port
 Port.COMport = 'COM4';     % the COM port for the trigger box: should not change on this PC
 Port.EventTriggerDuration = 0.004; % Duration, in sec, of trigger; delay before the port is flushed and set back to zero
+
+% Just do quick warning if triggers are switched OFF:
+if ~Port.InUse
+    userResponse = input('WARNING: Serial port is OFF. No triggers will be sent. Continue? Enter y or n: ','s');
+    if strcmp( userResponse, 'n' )
+        error('Aborting function!');
+    end
+end
 
 % Set aside unique details of this participant/block
 Res.ParticipantInfo.ID = Participant_ID;
@@ -74,7 +82,7 @@ dateString(dateString == ' ') =  '_';
 dateString(dateString == '-') =  '_';
 dateString(dateString == ':') =  '_';
 %Set aside information
-Res.ExperimentName = 'BRISC_movies';
+Res.ExperimentName = 'BRISC_movie';
 
 % Unique file name for the data to be saved as, and full path for results storage:
 Res.FileName = fullfile('C:\Users\BRISC\Documents\dlab-BRISC_EEG', ... % Full path for data file
@@ -525,7 +533,7 @@ try % Enclose in a try/catch statement, in case something goes awry with the PTB
     % And for the checkerboard contrast reverals:
     Res.Timing.CheckerContRevTimestampsLeft = cell(1,10); % empty cell arrays, 1 cell for each (potential) trial
     Res.Timing.CheckerContRevTimestampsRight = cell(1,10);
-        
+    
     trialN = 1; % Counter to increment across TRIALS
     F = 1; % Counter to increment across FRAMES
     
