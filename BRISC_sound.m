@@ -1,10 +1,15 @@
-function BRISC_roving_oddball
+function BRISC_sound
 %
-% Inputs:
-%   Participant_ID: number of participant, eg 1,2,3..n
-%   sex: sex/gender of participant; 'string' in format 'm' for boys (male) or 'f' for girls (female)
-%   block_number: the consecutive block/run for this participant, 1,2,3...
-
+% Inputs (requested):
+%   Participant_ID: the unique ID code for this participant, as a 'string'
+%       in the format '1M0001'
+%       First digit will be 1-3,
+%       2nd character is M for boys (male, M) or F for girls (female, F)
+%       then 4-digit unique number
+%   subgroupCode: 'M' for Midline, 'E' for endline (or 'B' for baseline), as a 'string'
+%   block_number: the consecutive block/run for this experiment and this participant, 1,2,3...
+%
+% Auditory oddball task
 %% Housekeeping
 clc;
 clear;
@@ -45,6 +50,9 @@ dateString(dateString == ':') =  '_';
 %Set aside information
 Res.ExperimentName = 'BRISC_sound';
 
+% Print information:
+fprintf('\nRunning %s experiment. Press ''Esc'' to exit. \n', Res.ExperimentName)
+
 % Unique file name for the data to be saved as, and full path for results storage:
 Res.FileName = fullfile('C:\Users\BRISC\Documents\dlab-BRISC_EEG', ... % Full path for data file
     'data', [Participant_ID, '_', ...  % Unique participant code
@@ -57,20 +65,20 @@ Res.FileName = fullfile('C:\Users\BRISC\Documents\dlab-BRISC_EEG', ... % Full pa
 % Just abort if the file already exists
 % (this should never be needed, but just in case):
 if exist(Res.FileName,'file')
-    userResponse = input('WARNING: Run file exists. Overwrite? Enter y or n: ','s');
+    userResponse = input('\n WARNING: Run file exists. Overwrite? Enter y or n: ','s');
     if ~strcmp( userResponse, 'y' )
         error('Aborting function! File exists!');
     end
 end
 
 % SERIAL PORT
-Port.InUse = true;         % set to true if sending triggers over serial port
+Port.InUse = false;         % set to true if sending triggers over serial port
 Port.COMport = 'COM4';     % the COM port for the trigger box: should not change on this PC
 Port.EventTriggerDuration = 0.004; % Duration, in sec, of trigger; delay before the port is flushed and set back to zero
 
 % Just do quick warning if triggers are switched OFF:
 if ~Port.InUse
-    userResponse = input('WARNING: Serial port is OFF. No triggers will be sent. Continue? Enter y or n: ','s');
+    userResponse = input('\n WARNING: Serial port is OFF. No triggers will be sent. Continue? Enter y or n: ','s');
     if strcmp( userResponse, 'n' )
         error('Aborting function!');
     end
@@ -91,6 +99,7 @@ Par.Disp.ToneDuration = 0.2;                                      % Duration of 
 Par.Disp.AudioSampleRateHz = 48000;                               % This is the default for this machine
 Par.Disp.AudioBitDepth = 24;                                      % Bits per sample: defauly bit depth for this machine
 Par.Disp.AudioToneFreqHz = [100:100:1000,1200:200:5000];          % Frequency of the sine wave we want to play
+Par.Disp.NumUniqueToneFreq = length(Par.Disp.AudioToneFreqHz);
 
 % Durations of each phase of the tone
 rampUpDuration = 0.01; % Duration of ramp-up period in seconds
@@ -126,12 +135,12 @@ end
 %% Define the event code triggers
 if Port.InUse
     
-    % Trigger numbers 101-130 denotes the different tone frequencies
+    % Trigger numbers 111-140 denotes the 30 different tone frequencies
     Port.EventCodes.toneFreqs = 111:140;
     
-    % Trigger numbers 201-236 denote the number of repetitions of the tone
-    Port.EventCodes.repetitionNumbers = 201:236;
-      
+    % Trigger numbers 201-210 denote the number of repetitions of the tone
+    Port.EventCodes.repetitionNumbers = 201:210;
+    
 end % of if Port.InUse
 
 
@@ -157,31 +166,35 @@ sound( Par.Disp.AudioCueVolRamp .* Par.Disp.AudioCueWave(4, :), Par.Disp.AudioSa
 %% Generate the sequence of tones within the block
 % A tone is randomly-selected, and then this repeats 4,5,6,7,8,9 or 10 times.
 
-toneOrder = 1:30; % 30 separate tones
+toneOrder = []; % 30 separate tones
 
 % Numbers of tone repetitions in a single train
 nToneReps = 4:10; % Following Garrido et al 2008
-nToneRepSets = 12;
+nToneRepSets = Par.nTonesPerBlock / sum(nToneReps) ; % Should be 12
 
+%Randomly order the set of unique tones, such that each is repeated in the set before
+% moving on to the next set
 for ii = 1: nToneRepSets
+    
+    toneOrder = [toneOrder, randperm(Par.Disp.NumUniqueToneFreq)];
+end
 
-toneOrder = randperm(toneOrder(end)); % Randomly order
-
+%toneOrder = randperm(toneOrder(end)); % Randomly order
 % Append some extra tones onto the end to fill out the block
-toneOrder2 = randperm(toneOrder(end)); % Randomly order
-
-toneOrder_fullBlock = [toneOrder, toneOrder2];
+%toneOrder2 = randperm(toneOrder(end)); % Randomly order
+%toneOrder_fullBlock = [toneOrder, toneOrder2];
 
 % Copy to Par structure
-Par.toneOrder = toneOrder_fullBlock(1:36);
+%Par.toneOrder = toneOrder_fullBlock(1:36);
+Par.toneOrder = toneOrder;
 
 
 % Generate a vector of numbers of times each tone repeats
 Par.toneRepetitions = repmat(nToneReps, 1, nToneRepSets, 1);
-Par.toneRepetitions = Shuffle(Par.toneRepetitions);
+Par.toneRepetitions = Par.toneRepetitions(randperm(length(Par.toneRepetitions)));
 
-% 528 stimuli in a block
-% One set of 2 + 6 + 36 repetitions = 44 tones -> * 12 = 528 tones per
+% 588 stimuli in a block
+% One set of sum(4:10) repetitions = 49 tones -> * 12 = 588 tones per
 % block
 
 Par.toneForEachTrial = repmat(Par.toneOrder(1), 1, Par.toneRepetitions(1));
@@ -191,8 +204,6 @@ for toneSet = 2:length(Par.toneRepetitions)
     Par.toneForEachTrial(end + 1 : end + Par.toneRepetitions(toneSet)) = repmat(Par.toneOrder(toneSet), 1, Par.toneRepetitions(toneSet));
     
 end % of for toneSet
-
-
 
 
 %% Save all parameters and details so far:
@@ -209,11 +220,14 @@ WaitSecs(3);
 % Reset counter variable denoting number of tone repetitions
 nReps = 1;
 
-Res.Timing.toneOnset(1) = GetSecs;
+Res.Timing.toneOnset(1) = GetSecs; % Initialise 'GetSecs'
 
+ForcedQuit = false;
+
+%% Loop across all trials:
 for trial = 1:Par.nTonesPerBlock
     
-    %% - Get relevant trial information (tone frequency, trigger number etc)
+    % - Get relevant trial information (tone frequency, trigger number etc)
     
     toneThisTrial = Par.toneForEachTrial(trial);
     
@@ -224,7 +238,7 @@ for trial = 1:Par.nTonesPerBlock
         
     elseif trial > 1 && toneThisTrial ~= Par.toneForEachTrial(trial - 1) % If changed tone
         
-        nReps = 1;
+        nReps = 1; % Reset n reps for this tone
         
     end % of if toneThisTrial
     
@@ -232,50 +246,52 @@ for trial = 1:Par.nTonesPerBlock
     
     %% - Send triggers
     
-    % Trigger Denoting Block Number
-    send_event_trigger(Port.sObj, Port.EventTriggerDuration, ...
-        block_number);
-    
-    
-    % Wait a litle bit before sending the code
-    WaitSecs(0.01);
-    
-    % Get hundreds and tens + ones counters for trial number
-    trial_hundredsCounter = floor(trial / 100);
-    trial_tensCounter = rem(trial, 100);
-    
-    % Trigger Denoting Trial Number (2 triggers for this)
-    % Denoting hundreds first
-    send_event_trigger(Port.sObj, Port.EventTriggerDuration, ...
-        trial_hundredsCounter + 1);
-    
-    % Wait a litle bit before sending the code
-    WaitSecs(0.01);
-    
-    % Then denoting tens + ones
-    send_event_trigger(Port.sObj, Port.EventTriggerDuration, ...
-        trial_tensCounter + 1);
-    
-    % Wait a litle bit before sending the code
-    WaitSecs(0.01);
-    
-    % Trigger denoting the repetition number of the tone
-    send_event_trigger(Port.sObj, Port.EventTriggerDuration, ...
-        Port.EventCodes.repetitionNumbers(nReps));
-    
-    %     % Waits for SOA duration to elapse before playing tone
-    %     while GetSecs < Res.Timing.toneOnset(trial) + Par.Timing.SOA_Duration_Sec - Par.Timing.EventCodeDuration
-    %
-    %     end % of while GetSecs
-    
-    % Trigger denoting the tone presented in the current trial
-    send_event_trigger(Port.sObj, Port.EventTriggerDuration, ...
-        Port.EventCodes.toneFreqs(toneThisTrial));
-    
+    if Port.InUse
+        % Trigger Denoting Block Number
+        send_event_trigger(Port.sObj, Port.EventTriggerDuration, ...
+            block_number);
+        
+        
+        % Wait a litle bit before sending the code
+        WaitSecs(0.01);
+        
+        % Get hundreds and tens + ones counters for trial number
+        trial_hundredsCounter = floor(trial / 100);
+        trial_tensCounter = rem(trial, 100);
+        
+        % Trigger Denoting Trial Number (2 triggers for this)
+        % Denoting hundreds first
+        send_event_trigger(Port.sObj, Port.EventTriggerDuration, ...
+            trial_hundredsCounter + 1);
+        
+        % Wait a litle bit before sending the code
+        WaitSecs(0.01);
+        
+        % Then denoting tens + ones
+        send_event_trigger(Port.sObj, Port.EventTriggerDuration, ...
+            trial_tensCounter + 1);
+        
+        % Wait a litle bit before sending the code
+        WaitSecs(0.01);
+        
+        % Trigger denoting the repetition number of the tone
+        send_event_trigger(Port.sObj, Port.EventTriggerDuration, ...
+            Port.EventCodes.repetitionNumbers(nReps));
+        
+        % Waits for SOA duration to elapse before playing tone
+        while GetSecs < Res.Timing.toneOnset(trial) + Par.Timing.SOA_Duration_Sec - Par.Timing.EventCodeDuration
+
+        end % of while GetSecs
+        
+        % Trigger denoting the tone presented in the current trial
+        send_event_trigger(Port.sObj, Port.EventTriggerDuration, ...
+            Port.EventCodes.toneFreqs(toneThisTrial));
+        
+    end
     
     %% - Play tone
     
-    % Mark the time before tone onset
+    % Mark the time before tone onset and store in results struct
     Res.Timing.toneOnset(trial) = GetSecs;
     
     % Play the tone
@@ -286,33 +302,58 @@ for trial = 1:Par.nTonesPerBlock
     
     
     %% - Wait during the ISI
+    
+    % Save data here:
+    save(Res.FileName, 'Par', 'Res', 'Port')
+    
     % Waits for SOA duration minus event trigger duration (to account for time it takes to send a trigger)
-    while GetSecs < Res.Timing.toneOnset(trial) + Par.Timing.SOA_Duration_Sec - 0.1;
+    while GetSecs < Res.Timing.toneOnset(trial) + Par.Timing.SOA_Duration_Sec - 0.1
+        
+        % Here, we can check for 'esc' button presses to abort:
+        [KeyIsDown, ~, keyCode] = KbCheck();
+        if KeyIsDown % a key has been pressed
+            if keyCode(RespQuit)
+                ForcedQuit = true
+                ExitGracefully(ForcedQuit, Port.sObj)
+            end
+        end
         
         
     end % of while GetSecs
     
 end % of for trial
 
-
-
-
-
-
-
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    function send_event_trigger(serial_object, trigger_duration, event_code)
-        % Send a trigger over the serial port, as defined in 'event_code'
-        % There is an imposed delay (duration) of 'trigger_duration' seconds
-        % and then the port is flushed again with zero, ready for next use.
-        
-        fwrite(serial_object, event_code);
-        WaitSecs(trigger_duration);
-        fwrite(serial_object, 0);
-        
-    end
-
+% One final save of data:
+save(Res.FileName, 'Par', 'Res', 'Port')
 
 end % of function
 
+%% Sub-functions follow..
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function ExitGracefully (ForcedQuit, serial_object)
+%...need to shut everything down here...
+
+% Close down the serial port (if used)
+if ~isempty(serial_object)
+    fclose(serial_object);
+end
+
+% announce to cmd window if the program was aborted by the user
+if ForcedQuit
+    error('You quit the program!')
+end
+
+end
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function send_event_trigger(serial_object, trigger_duration, event_code)
+% Send a trigger over the serial port, as defined in 'event_code'
+% There is an imposed delay (duration) of 'trigger_duration' seconds
+% and then the port is flushed again with zero, ready for next use.
+
+fwrite(serial_object, event_code);
+WaitSecs(trigger_duration);
+fwrite(serial_object, 0);
+
+end
