@@ -28,6 +28,8 @@ block_number = input('\n Please enter experiment run/block number: ');
 if length(Participant_ID) ~= 6
     fprintf('\n Participant ID/code incorrect format.')
     Participant_ID = input('\n Please enter the unique 6-character participant ID/code, eg. ''1F0001'': ');
+    stageCode = input('\n Please enter the trial stage code, eg. ''M'' or ''E'': ');
+    block_number = input('\n Please enter experiment run/block number: ');
 end
 
 % Pull out integer from participant ID to use to determine counterbalancing of checker frequencies:
@@ -36,6 +38,8 @@ checkerflip = str2double(Participant_ID(1));
 if isnan(checkerflip)
     fprintf('\n Participant ID/code incorrect format.')
     Participant_ID = input('\n Please enter the unique 6-character participant ID/code, eg. ''1F0001'': ');
+    stageCode = input('\n Please enter the trial stage code, eg. ''M'' or ''E'': ');
+    block_number = input('\n Please enter experiment run/block number: ');
 end
 
 %% Set Up Structures Used in Experiment
