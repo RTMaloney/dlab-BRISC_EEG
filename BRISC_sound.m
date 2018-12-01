@@ -10,10 +10,16 @@ function BRISC_sound
 %   block_number: the consecutive block/run for this experiment and this participant, 1,2,3...
 %
 % Auditory oddball task
+
+
 %% Housekeeping
 clc;
 clear;
 close all;
+
+% Choose whether to save data after each tone onset
+saveDataEachTrial = 1; % 1 = Save data after each tone onset / 0 = Don't save
+
 
 % Request input of variables:
 Participant_ID = input('\n Please enter the unique 6-character participant ID/code, eg. ''1F0001'': ');
@@ -103,6 +109,8 @@ Par.Disp.AudioBitDepth = 24;                                      % Bits per sam
 Par.Disp.AudioToneFreqHz = [100:100:1000,1200:200:5000];          % Frequency of the sine wave we want to play
 Par.Disp.NumUniqueToneFreq = length(Par.Disp.AudioToneFreqHz);
 
+
+
 % Durations of each phase of the tone
 rampUpDuration = 0.01; % Duration of ramp-up period in seconds
 rampDownDuration = 0.01; % Duration of ramp-down period in seconds
@@ -146,6 +154,17 @@ if Port.InUse
 end % of if Port.InUse
 
 
+%% Set up the Sound Output
+    
+% Initialise the audio
+InitializePsychSound(1);
+    
+% Make a handle for audio object
+% (May not work for 1 channel setup, and may need to duplicate waveforms
+% for 2 channel configuration)
+nChannels = 2;
+pahandle = PsychPortAudio('Open', [], [], 0, Par.Disp.AudioSampleRateHz, nChannels);
+
 
 %% Set up the auditory tones:
 
@@ -160,9 +179,20 @@ end % of for toneNo
 Par.Disp.AudioCueVolRamp = [linspace(0,1, Par.Disp.AudioSampleRateHz * rampUpDuration), ...
     ones(1, Par.Disp.AudioSampleRateHz * fullVolDuration), linspace(1, 0, Par.Disp.AudioSampleRateHz * rampDownDuration)];
 
-% Play the sound once to preload the function
-sound( Par.Disp.AudioCueVolRamp .* Par.Disp.AudioCueWave(4, :), Par.Disp.AudioSampleRateHz, Par.Disp.AudioBitDepth);
+% Play the tone to test PTB audio and preload the function
+PsychPortAudio('FillBuffer', pahandle, [Par.Disp.AudioCueVolRamp .* Par.Disp.AudioCueWave(4, :); Par.Disp.AudioCueVolRamp .* Par.Disp.AudioCueWave(4, :)]);
+temp_timeStamp = PsychPortAudio('Start', pahandle, 1, 0, 1);
 
+% % Play the sound once to preload the function
+% sound( Par.Disp.AudioCueVolRamp .* Par.Disp.AudioCueWave(4, :), Par.Disp.AudioSampleRateHz, Par.Disp.AudioBitDepth);
+
+
+
+%% Preallocate Data Matrices/Structures
+
+% For recording timing of tone onsets
+Res.Timing.toneOnset = nan(Par.nTonesPerBlock, 1);
+Res.Timing.toneOnset_ideal = nan(Par.nTonesPerBlock, 1);
 
 
 %% Generate the sequence of tones within the block
@@ -222,7 +252,7 @@ WaitSecs(3);
 % Reset counter variable denoting number of tone repetitions
 nReps = 1;
 
-Res.Timing.toneOnset(1) = GetSecs; % Initialise 'GetSecs'
+lastToneOnset = GetSecs; % Initialise 'GetSecs'
 
 ForcedQuit = false;
 
@@ -246,6 +276,12 @@ for trial = 1:Par.nTonesPerBlock
     
     
     
+    %% Load Audio Before Playing Tone
+    
+    % Load audio before playing tone
+    PsychPortAudio('FillBuffer', pahandle, [Par.Disp.AudioCueVolRamp .* Par.Disp.AudioCueWave(toneThisTrial, :); Par.Disp.AudioCueVolRamp .* Par.Disp.AudioCueWave(toneThisTrial, :)]);
+    
+    
     %% - Send triggers
     
     if Port.InUse
@@ -255,7 +291,7 @@ for trial = 1:Par.nTonesPerBlock
         
         
         % Wait a litle bit before sending the code
-        WaitSecs(0.01);
+        WaitSecs(0.005);
         
         % Get hundreds and tens + ones counters for trial number
         trial_hundredsCounter = floor(trial / 100);
@@ -267,58 +303,64 @@ for trial = 1:Par.nTonesPerBlock
             trial_hundredsCounter + 1);
         
         % Wait a litle bit before sending the code
-        WaitSecs(0.01);
+        WaitSecs(0.005);
         
         % Then denoting tens + ones
         send_event_trigger(Port.sObj, Port.EventTriggerDuration, ...
             trial_tensCounter + 1);
         
         % Wait a litle bit before sending the code
-        WaitSecs(0.01);
+        WaitSecs(0.005);
         
         % Trigger denoting the repetition number of the tone
         send_event_trigger(Port.sObj, Port.EventTriggerDuration, ...
             Port.EventCodes.repetitionNumbers(nReps));
-        
-        % Waits for SOA duration to elapse before playing tone
-        while GetSecs < Res.Timing.toneOnset(trial) + Par.Timing.SOA_Duration_Sec - Par.Timing.EventCodeDuration
-
-        end % of while GetSecs
+                
+    end % of if Port.inUse
+    
+    
+    %% - Play tone
+    
+    Res.Timing.toneOnset(trial) = PsychPortAudio('Start', pahandle, 1, lastToneOnset + Par.Timing.SOA_Duration_Sec, 1);
+    
+    % Get Ideal timing to check for output delays
+    Res.Timing.toneOnset_ideal(trial) = lastToneOnset + Par.Timing.SOA_Duration_Sec;
+    
+    if Port.InUse
         
         % Trigger denoting the tone presented in the current trial
         send_event_trigger(Port.sObj, Port.EventTriggerDuration, ...
             Port.EventCodes.toneFreqs(toneThisTrial));
-        
-    end
     
-    %% - Play tone
+    end % of if Port.InUse
     
-    % Mark the time before tone onset and store in results struct
-    Res.Timing.toneOnset(trial) = GetSecs;
-    
-    % Play the tone
-    sound( Par.Disp.AudioCueVolRamp .* Par.Disp.AudioCueWave(toneThisTrial, :), ...
-        Par.Disp.AudioSampleRateHz, ...
-        Par.Disp.AudioBitDepth);
+    % Copy into separate temporary variable
+    lastToneOnset = Res.Timing.toneOnset(trial);
     
     
     
     %% - Wait during the ISI
     
     % Save data here:
-    save(Res.FileName, 'Par', 'Res', 'Port')
+    if saveDataEachTrial
+    
+        save(Res.FileName, 'Par', 'Res', 'Port');
+    
+    end % of if saveDataEachTrial
     
     % Waits for SOA duration minus event trigger duration (to account for time it takes to send a trigger)
-    while GetSecs < Res.Timing.toneOnset(trial) + Par.Timing.SOA_Duration_Sec - 0.1
+    while GetSecs < Res.Timing.toneOnset(trial) + Par.Timing.SOA_Duration_Sec - 0.09
         
         % Here, we can check for 'esc' button presses to abort:
         [KeyIsDown, ~, keyCode] = KbCheck();
         if KeyIsDown % a key has been pressed
+            
             if keyCode(RespQuit)
                 ForcedQuit = true
                 ExitGracefully(ForcedQuit, Port.sObj)
-            end
-        end
+                
+            end % of if keyCode
+        end % of if KeyIsDown
         
         
     end % of while GetSecs
@@ -339,6 +381,10 @@ function ExitGracefully (ForcedQuit, serial_object)
 if ~isempty(serial_object)
     fclose(serial_object);
 end
+
+% Close down the PTB Audio Port
+PsychPortAudio('Stop', pahandle); % Stop playback:
+PsychPortAudio('Close', pahandle); % Close the audio device:
 
 % announce to cmd window if the program was aborted by the user
 if ForcedQuit
