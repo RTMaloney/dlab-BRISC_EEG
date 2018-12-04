@@ -106,7 +106,7 @@ Par.Timing.EventCodeDuration = 0.004;
 Par.Disp.ToneDuration = 0.2;                                      % Duration of the tones (including ramp up/down periods)
 Par.Disp.AudioSampleRateHz = 48000;                               % This is the default for this machine
 Par.Disp.AudioBitDepth = 24;                                      % Bits per sample: defauly bit depth for this machine
-Par.Disp.AudioToneFreqHz = [100:100:1000,1200:200:5000];          % Frequency of the sine wave we want to play
+Par.Disp.AudioToneFreqHz = [300:100:1000,1200:200:5000];          % Frequency of the sine wave we want to play
 Par.Disp.NumUniqueToneFreq = length(Par.Disp.AudioToneFreqHz);
 
 
@@ -145,8 +145,8 @@ end
 %% Define the event code triggers
 if Port.InUse
     
-    % Trigger numbers 111-140 denotes the 30 different tone frequencies
-    Port.EventCodes.toneFreqs = 111:140;
+    % Trigger numbers 111-138 denotes the 28 different tone frequencies
+    Port.EventCodes.toneFreqs = 111:138;
     
     % Trigger numbers 201-210 denote the number of repetitions of the tone
     Port.EventCodes.repetitionNumbers = 201:210;
@@ -180,11 +180,8 @@ Par.Disp.AudioCueVolRamp = [linspace(0,1, Par.Disp.AudioSampleRateHz * rampUpDur
     ones(1, Par.Disp.AudioSampleRateHz * fullVolDuration), linspace(1, 0, Par.Disp.AudioSampleRateHz * rampDownDuration)];
 
 % Play the tone to test PTB audio and preload the function
-PsychPortAudio('FillBuffer', pahandle, [Par.Disp.AudioCueVolRamp .* Par.Disp.AudioCueWave(4, :); Par.Disp.AudioCueVolRamp .* Par.Disp.AudioCueWave(4, :)]);
+PsychPortAudio('FillBuffer', pahandle, [Par.Disp.AudioCueVolRamp .* Par.Disp.AudioCueWave(1, :); Par.Disp.AudioCueVolRamp .* Par.Disp.AudioCueWave(1, :)]);
 temp_timeStamp = PsychPortAudio('Start', pahandle, 1, 0, 1);
-
-% % Play the sound once to preload the function
-% sound( Par.Disp.AudioCueVolRamp .* Par.Disp.AudioCueWave(4, :), Par.Disp.AudioSampleRateHz, Par.Disp.AudioBitDepth);
 
 
 
@@ -198,7 +195,7 @@ Res.Timing.toneOnset_ideal = nan(Par.nTonesPerBlock, 1);
 %% Generate the sequence of tones within the block
 % A tone is randomly-selected, and then this repeats 4,5,6,7,8,9 or 10 times.
 
-toneOrder = []; % 30 separate tones
+toneOrder = []; % 28 separate tones
 
 % Numbers of tone repetitions in a single train
 nToneReps = 4:10; % Following Garrido et al 2008
@@ -209,7 +206,8 @@ nToneRepSets = Par.nTonesPerBlock / sum(nToneReps) ; % Should be 12
 for ii = 1: nToneRepSets
     
     toneOrder = [toneOrder, randperm(Par.Disp.NumUniqueToneFreq)];
-end
+    
+end % of for ii
 
 %toneOrder = randperm(toneOrder(end)); % Randomly order
 % Append some extra tones onto the end to fill out the block
